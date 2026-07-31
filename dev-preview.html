@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Zaptec Go 2 Charger Card — Dev Preview</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      padding: 24px;
+      min-height: 100vh;
+      font-family: sans-serif;
+      background: var(--bg);
+      color: var(--fg);
+      transition: background 0.3s, color 0.3s;
+    }
+
+    body.dark {
+      --bg: #111827;
+      --fg: #f3f4f6;
+      --card-bg: #1f2937;
+      --card-border: #374151;
+      --ha-card-background: #1f2937;
+      --card-background-color: #1f2937;
+      --primary-text-color: #f3f4f6;
+      --secondary-text-color: #9ca3af;
+      --secondary-background-color: rgba(255,255,255,0.06);
+      --divider-color: #374151;
+    }
+    body.light {
+      --bg: #f3f4f6;
+      --fg: #111827;
+      --card-bg: #ffffff;
+      --card-border: #e5e7eb;
+      --ha-card-background: #ffffff;
+      --card-background-color: #ffffff;
+      --primary-text-color: #111827;
+      --secondary-text-color: #6b7280;
+      --secondary-background-color: rgba(0,0,0,0.05);
+      --divider-color: #e5e7eb;
+    }
+
+    .toolbar {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 24px;
+      flex-wrap: wrap;
+    }
+    .toolbar h1 { margin: 0; font-size: 16px; font-weight: 600; flex-basis: 100%; }
+
+    label { font-size: 13px; display: flex; align-items: center; gap: 6px; }
+    input[type=number] { width: 80px; padding: 2px 4px; border-radius: 4px; border: 1px solid var(--card-border); background: var(--card-bg); color: var(--fg); }
+    select {
+      padding: 4px 6px; border-radius: 4px; border: 1px solid var(--card-border);
+      background: var(--card-bg); color: var(--fg); font-size: 13px;
+    }
+    input[type=checkbox] { width: 16px; height: 16px; }
+
+    .card-wrap {
+      width: 100%;
+      max-width: 360px;
+      height: 640px;
+      --ha-card-background: var(--ha-card-background);
+      --card-background-color: var(--card-background-color);
+      --primary-text-color: var(--primary-text-color);
+      --secondary-text-color: var(--secondary-text-color);
+      --secondary-background-color: var(--secondary-background-color);
+      --divider-color: var(--divider-color);
+    }
+    zaptec-charger-card {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+
+    ha-card {
+      display: block;
+      background: var(--ha-card-background, #1f2937);
+      border-radius: 12px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+      height: 100%;
+    }
+  </style>
+</head>
+<body class="dark">
+
+  <div class="toolbar">
+    <h1>Zaptec Go 2 Charger Card — Dev Preview</h1>
+
+    <label>
+      Theme
+      <select id="themeSelect">
+        <option value="dark">Dark</option>
+        <option value="light">Light</option>
+      </select>
+    </label>
+
+    <label>
+      Lang
+      <select id="langSelect">
+        <option value="da" selected>DA</option>
+        <option value="en">EN</option>
+      </select>
+    </label>
+
+    <label>
+      Charger mode
+      <select id="modeSelect">
+        <option value="disconnected">disconnected</option>
+        <option value="connected_requesting" selected>connected_requesting</option>
+        <option value="connected_charging">connected_charging</option>
+        <option value="connected_finished">connected_finished</option>
+      </select>
+    </label>
+
+    <label>
+      Schedule enabled
+      <input type="checkbox" id="scheduleEnabled" />
+    </label>
+
+    <label>
+      Price (kr/kWh)
+      <input type="number" id="priceInput" value="1.85" step="0.01" />
+    </label>
+
+    <label>
+      Power (kW)
+      <input type="number" id="powerInput" value="7200" step="10" /> W
+    </label>
+
+    <label>
+      Current (A)
+      <input type="number" id="currentInput" value="16" step="1" />
+    </label>
+
+    <label>
+      Session energy (kWh)
+      <input type="number" id="energyInput" value="12.4" step="0.1" />
+    </label>
+
+    <label>
+      Schedule time
+      <input type="time" id="scheduleTimeInput" value="23:00" step="60" />
+    </label>
+
+    <label>
+      Left car SoC
+      <input type="checkbox" id="leftSocEnabled" checked />
+      <input type="number" id="leftSocValue" value="68" min="0" max="100" step="1" style="width:56px" />
+      <input type="text" id="leftSocName" value="EQC" style="width:70px" />
+      <input type="color" id="leftSocColor" value="#4caf50" />
+    </label>
+
+    <label>
+      Right car SoC
+      <input type="checkbox" id="rightSocEnabled" />
+      <input type="number" id="rightSocValue" value="42" min="0" max="100" step="1" style="width:56px" />
+      <input type="text" id="rightSocName" value="Model Y" style="width:70px" />
+      <input type="color" id="rightSocColor" value="#ef5350" />
+    </label>
+  </div>
+
+  <div class="card-wrap">
+    <zaptec-charger-card></zaptec-charger-card>
+  </div>
+
+  <!-- Minimal shims so the card renders standalone, outside a real HA frontend -->
+  <script>
+    customElements.define('ha-card', class extends HTMLElement {
+      connectedCallback() { this.style.display = 'block'; }
+    });
+
+    const ICON_GLYPH = {
+      'mdi:cash':                '💰',
+      'mdi:lightning-bolt':      '⚡',
+      'mdi:current-ac':          '🔌',
+      'mdi:car-electric':        '🚗',
+      'mdi:battery-charging-80': '🔋',
+      'mdi:car-clock':           '🕒',
+      'mdi:flash':               '⚡',
+      'mdi:clock-start':         '⏱',
+      'mdi:stop-circle-outline': '⏹',
+      'mdi:cancel':              '🚫',
+    };
+    customElements.define('ha-icon', class extends HTMLElement {
+      static get observedAttributes() { return ['icon']; }
+      connectedCallback() { this._render(); }
+      attributeChangedCallback() { this._render(); }
+      _render() {
+        const icon = this.getAttribute('icon') || '';
+        this.textContent = ICON_GLYPH[icon] || '●';
+        Object.assign(this.style, {
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          fontSize: 'var(--mdc-icon-size, 16px)',
+          lineHeight: '1',
+        });
+      }
+    });
+  </script>
+
+  <script type="module" src="/dist/zaptec-charger-card.js"></script>
+
+  <script>
+    const card = document.querySelector('zaptec-charger-card');
+
+    const CONFIG = {}; // rely entirely on the card's own defaults
+
+    let serviceLog = [];
+    function callService(domain, service, data, target) {
+      const entry = { domain, service, data, target, at: new Date().toISOString() };
+      serviceLog.push(entry);
+      console.log('[hass.callService]', domain + '.' + service, { data, target });
+
+      // Reflect the effect of the call back into fake state, like a real HA would.
+      if (domain === 'input_boolean' && service === 'toggle') {
+        state.scheduleEnabled = !state.scheduleEnabled;
+        document.getElementById('scheduleEnabled').checked = state.scheduleEnabled;
+      }
+      if (domain === 'input_datetime' && service === 'set_datetime') {
+        document.getElementById('scheduleTimeInput').value = data.time.slice(0, 5);
+      }
+      if (domain === 'switch' && service === 'turn_off') {
+        document.getElementById('modeSelect').value = 'connected_finished';
+      }
+      if (domain === 'script') {
+        // start_now / schedule / cancel_schedule all resolve to plausible mode transitions
+        if (service.includes('cancel')) {
+          state.scheduleEnabled = false;
+          document.getElementById('scheduleEnabled').checked = false;
+        } else if (service.includes('schedule')) {
+          state.scheduleEnabled = true;
+          document.getElementById('scheduleEnabled').checked = true;
+        } else if (service.includes('start')) {
+          document.getElementById('modeSelect').value = 'connected_charging';
+        }
+      }
+      if (domain === 'zaptec' && service === 'limit_current') {
+        document.getElementById('currentInput').value = data.available_current;
+      }
+      pushUpdate();
+    }
+
+    const state = { scheduleEnabled: false };
+
+    function buildConfig() {
+      const leftOn  = document.getElementById('leftSocEnabled').checked;
+      const rightOn = document.getElementById('rightSocEnabled').checked;
+      return {
+        ...CONFIG,
+        left_soc_entity:  leftOn ? 'sensor.left_car_state_of_charge' : null,
+        left_soc_name:    document.getElementById('leftSocName').value,
+        left_soc_color:   document.getElementById('leftSocColor').value,
+        right_soc_entity: rightOn ? 'sensor.right_car_state_of_charge' : null,
+        right_soc_name:   document.getElementById('rightSocName').value,
+        right_soc_color:  document.getElementById('rightSocColor').value,
+      };
+    }
+
+    function makeHass() {
+      const now = new Date().toISOString();
+      const mkState = (state_, unit) => ({
+        state: String(state_),
+        attributes: { unit_of_measurement: unit },
+        last_changed: now,
+        last_updated: now,
+      });
+
+      const mode           = document.getElementById('modeSelect').value;
+      const scheduleOn     = document.getElementById('scheduleEnabled').checked;
+      const price          = document.getElementById('priceInput').value;
+      const power          = document.getElementById('powerInput').value;
+      const current        = document.getElementById('currentInput').value;
+      const energy         = document.getElementById('energyInput').value;
+      const scheduleTime   = document.getElementById('scheduleTimeInput').value || '23:00';
+      const lang           = document.getElementById('langSelect').value;
+      const leftSoc        = document.getElementById('leftSocValue').value;
+      const rightSoc       = document.getElementById('rightSocValue').value;
+
+      return {
+        language: lang,
+        states: {
+          'sensor.ev_ev_charger_charger_mode':        mkState(mode),
+          'input_boolean.zaptec_scheduled_charge_enabled': mkState(scheduleOn ? 'on' : 'off'),
+          'input_datetime.zaptec_scheduled_start_time': mkState(`${scheduleTime}:00`),
+          'sensor.stromligning_current_price_vat':    mkState(price, 'kr/kWh'),
+          'sensor.ev_ev_charger_session_total_charge': mkState(energy, 'kWh'),
+          'sensor.ev_ev_charger_charger_power':       mkState(power, 'W'),
+          'sensor.ev_ev_charger_charger_current':     mkState(current, 'A'),
+          'sensor.left_car_state_of_charge':          mkState(leftSoc, '%'),
+          'sensor.right_car_state_of_charge':         mkState(rightSoc, '%'),
+        },
+        callService,
+      };
+    }
+
+    function pushUpdate() {
+      try { card.setConfig(buildConfig()); } catch (_) {}
+      card.hass = makeHass();
+    }
+
+    customElements.whenDefined('zaptec-charger-card').then(() => pushUpdate());
+
+    [
+      'modeSelect', 'scheduleEnabled', 'priceInput', 'powerInput',
+      'currentInput', 'energyInput', 'scheduleTimeInput', 'langSelect',
+      'leftSocEnabled', 'leftSocValue', 'leftSocName', 'leftSocColor',
+      'rightSocEnabled', 'rightSocValue', 'rightSocName', 'rightSocColor',
+    ].forEach(id => {
+      document.getElementById(id).addEventListener('input', pushUpdate);
+      document.getElementById(id).addEventListener('change', pushUpdate);
+    });
+
+    document.getElementById('themeSelect').addEventListener('change', e => {
+      document.body.className = e.target.value;
+    });
+  </script>
+</body>
+</html>

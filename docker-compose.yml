@@ -1,0 +1,18 @@
+services:
+  dev:
+    build:
+      context: .devcontainer
+    volumes:
+      - .:/workspace
+      # Named volume keeps node_modules inside the container (avoids host/container ABI mismatch)
+      - node_modules:/workspace/node_modules
+    working_dir: /workspace
+    ports:
+      - "3000:3000"
+    user: node
+    command: sh -c "npm install && npm start"
+    stdin_open: true
+    tty: true
+
+volumes:
+  node_modules:
