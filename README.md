@@ -24,10 +24,8 @@ scheduled start reliable even when no browser has the dashboard open. See [Requi
 
 ## Screenshots
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/briis/zaptec_charger_card/main/images/zaptec_card_no_car_dark.png">
-  <img src="https://raw.githubusercontent.com/briis/zaptec_charger_card/main/images/zaptec_card_no_car_light.png" alt="Zaptec Go 2 Charger Card, no car connected">
-</picture>
+![Zaptec Go 2 Charger Card, no car connected](https://raw.githubusercontent.com/briis/zaptec_charger_card/main/images/zaptec_card_no_car_light.png#gh-light-mode-only)
+![Zaptec Go 2 Charger Card, no car connected](https://raw.githubusercontent.com/briis/zaptec_charger_card/main/images/zaptec_card_no_car_dark.png#gh-dark-mode-only)
 
 More screenshots (active charging, scheduled start, finished) will be added once a car is connected.
 
