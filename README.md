@@ -22,6 +22,17 @@ scheduled start reliable even when no browser has the dashboard open. See [Requi
 
 ---
 
+## Screenshots
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/briis/zaptec_charger_card/main/images/zaptec_card_no_car_dark.png">
+  <img src="https://raw.githubusercontent.com/briis/zaptec_charger_card/main/images/zaptec_card_no_car_light.png" alt="Zaptec Go 2 Charger Card, no car connected">
+</picture>
+
+More screenshots (active charging, scheduled start, finished) will be added once a car is connected.
+
+---
+
 ## Requirements
 
 The card is a **UI layer only** — it does not create automations, scripts, or helpers for you. It calls
