@@ -6,7 +6,8 @@
       "Bash(node -e \"require.resolve\\('puppeteer'\\)\")",
       "Bash(pkill -f \"concurrently --names rollup,serve\")",
       "Bash(pkill -f \"rollup -c --watch\")",
-      "Bash(pkill -f \"serve . -l 3000\")"
+      "Bash(pkill -f \"serve . -l 3000\")",
+      "Bash(python3 -)"
     ]
   }
 }

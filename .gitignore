@@ -13,3 +13,4 @@ Thumbs.db
 .vscode/settings.json
 
 # dist/ is intentionally NOT ignored — HACS installs the built artifact directly from the repo
+.claude/settings.json

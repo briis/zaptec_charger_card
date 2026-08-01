@@ -308,12 +308,12 @@ Add the card via the UI card picker (**Zaptec Go 2 Charger Card**) or paste the 
 | `left_soc_entity` | string | — | Optional sensor (%) shown left of the illustration, e.g. a car's battery state of charge. Hidden when unset. |
 | `left_soc_name` | string | — | Label shown under the left sensor's value |
 | `left_soc_icon` | string | `mdi:car-electric` | Icon for the left sensor |
-| `left_soc_image` | string | — | Optional image for the left sensor. Overrides `left_soc_icon` when set. |
+| `left_soc_image` | string | — | Optional image URL/path (e.g. `/local/car.png`) for the left sensor. Overrides `left_soc_icon` when set. |
 | `left_soc_color` | string | `#03a9f4` | Icon color for the left sensor (any CSS color); ignored when `left_soc_image` is set |
 | `right_soc_entity` | string | — | Optional sensor (%) shown right of the illustration. Hidden when unset. |
 | `right_soc_name` | string | — | Label shown under the right sensor's value |
 | `right_soc_icon` | string | `mdi:car-electric` | Icon for the right sensor |
-| `right_soc_image` | string | — | Optional image for the right sensor. Overrides `right_soc_icon` when set. |
+| `right_soc_image` | string | — | Optional image URL/path (e.g. `/local/car.png`) for the right sensor. Overrides `right_soc_icon` when set. |
 | `right_soc_color` | string | `#03a9f4` | Icon color for the right sensor (any CSS color); ignored when `right_soc_image` is set |
 
 ### Example
