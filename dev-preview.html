@@ -152,6 +152,7 @@
       <input type="number" id="leftSocValue" value="68" min="0" max="100" step="1" style="width:56px" />
       <input type="text" id="leftSocName" value="EQC" style="width:70px" />
       <input type="color" id="leftSocColor" value="#4caf50" />
+      <input type="text" id="leftSocImage" placeholder="image URL (optional)" style="width:160px" />
     </label>
 
     <label>
@@ -160,6 +161,7 @@
       <input type="number" id="rightSocValue" value="42" min="0" max="100" step="1" style="width:56px" />
       <input type="text" id="rightSocName" value="Model Y" style="width:70px" />
       <input type="color" id="rightSocColor" value="#ef5350" />
+      <input type="text" id="rightSocImage" placeholder="image URL (optional)" style="width:160px" />
     </label>
   </div>
 
@@ -255,9 +257,11 @@
         left_soc_entity:  leftOn ? 'sensor.left_car_state_of_charge' : null,
         left_soc_name:    document.getElementById('leftSocName').value,
         left_soc_color:   document.getElementById('leftSocColor').value,
+        left_soc_image:   document.getElementById('leftSocImage').value || null,
         right_soc_entity: rightOn ? 'sensor.right_car_state_of_charge' : null,
         right_soc_name:   document.getElementById('rightSocName').value,
         right_soc_color:  document.getElementById('rightSocColor').value,
+        right_soc_image:  document.getElementById('rightSocImage').value || null,
       };
     }
 
@@ -308,8 +312,8 @@
     [
       'modeSelect', 'scheduleEnabled', 'priceInput', 'powerInput',
       'currentInput', 'energyInput', 'scheduleTimeInput', 'langSelect',
-      'leftSocEnabled', 'leftSocValue', 'leftSocName', 'leftSocColor',
-      'rightSocEnabled', 'rightSocValue', 'rightSocName', 'rightSocColor',
+      'leftSocEnabled', 'leftSocValue', 'leftSocName', 'leftSocColor', 'leftSocImage',
+      'rightSocEnabled', 'rightSocValue', 'rightSocName', 'rightSocColor', 'rightSocImage',
     ].forEach(id => {
       document.getElementById(id).addEventListener('input', pushUpdate);
       document.getElementById(id).addEventListener('change', pushUpdate);

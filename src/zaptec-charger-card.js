@@ -58,10 +58,12 @@ const TRANSLATIONS = {
     editor_left_soc_entity:          'Left car battery sensor (optional)',
     editor_left_soc_name:            'Left car name',
     editor_left_soc_icon:            'Left car icon',
+    editor_left_soc_image:           'Left car image (overrides icon)',
     editor_left_soc_color:           'Left car icon color',
     editor_right_soc_entity:         'Right car battery sensor (optional)',
     editor_right_soc_name:           'Right car name',
     editor_right_soc_icon:           'Right car icon',
+    editor_right_soc_image:          'Right car image (overrides icon)',
     editor_right_soc_color:          'Right car icon color',
   },
   en: {
@@ -115,10 +117,12 @@ const TRANSLATIONS = {
     editor_left_soc_entity:          'Left car battery sensor (optional)',
     editor_left_soc_name:            'Left car name',
     editor_left_soc_icon:            'Left car icon',
+    editor_left_soc_image:           'Left car image (overrides icon)',
     editor_left_soc_color:           'Left car icon color',
     editor_right_soc_entity:         'Right car battery sensor (optional)',
     editor_right_soc_name:           'Right car name',
     editor_right_soc_icon:           'Right car icon',
+    editor_right_soc_image:          'Right car image (overrides icon)',
     editor_right_soc_color:          'Right car icon color',
   },
 };
@@ -145,10 +149,12 @@ const DEFAULTS = {
   left_soc_entity:           null,
   left_soc_name:             '',
   left_soc_icon:             'mdi:car-electric',
+  left_soc_image:            null,
   left_soc_color:            '#03a9f4',
   right_soc_entity:          null,
   right_soc_name:            '',
   right_soc_icon:            'mdi:car-electric',
+  right_soc_image:           null,
   right_soc_color:           '#03a9f4',
 };
 
@@ -188,7 +194,7 @@ const STYLES = `
   /* -- Illustration -- */
   .illustration-wrap {
     display: grid;
-    grid-template-columns: 64px 1fr 64px;
+    grid-template-columns: 80px 1fr 80px;
     align-items: center;
     justify-items: center;
     gap: 6px;
@@ -207,19 +213,26 @@ const STYLES = `
   #soc-left      { grid-column: 1; }
   .illustration  { grid-column: 2; }
   #soc-right     { grid-column: 3; }
-  .soc-tile ha-icon { --mdc-icon-size: 22px; }
+  .soc-tile ha-icon { --mdc-icon-size: 40px; }
+  .soc-tile .soc-image {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    object-fit: cover;
+  }
   .soc-tile .soc-value {
     font-size: 14px;
     font-weight: 700;
     color: var(--primary-text-color);
   }
   .soc-tile .soc-name {
-    font-size: 9px;
-    letter-spacing: 0.03em;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
     text-transform: uppercase;
     color: var(--secondary-text-color);
     text-align: center;
-    max-width: 64px;
+    max-width: 80px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -418,10 +431,12 @@ const EDITOR_SCHEMA = [
   { name: 'left_soc_entity',  required: false, selector: { entity: { domain: 'sensor' } } },
   { name: 'left_soc_name',   required: false, selector: { text: {} } },
   { name: 'left_soc_icon',   required: false, selector: { icon: {} } },
+  { name: 'left_soc_image',  required: false, selector: { image: {} } },
   { name: 'left_soc_color',  required: false, selector: { text: {} } },
   { name: 'right_soc_entity', required: false, selector: { entity: { domain: 'sensor' } } },
   { name: 'right_soc_name',  required: false, selector: { text: {} } },
   { name: 'right_soc_icon',  required: false, selector: { icon: {} } },
+  { name: 'right_soc_image', required: false, selector: { image: {} } },
   { name: 'right_soc_color', required: false, selector: { text: {} } },
 ];
 
@@ -549,6 +564,7 @@ class ZaptecChargerCard extends HTMLElement {
         <div class="illustration-wrap">
           <div class="soc-tile" id="soc-left">
             <ha-icon id="soc-left-icon"></ha-icon>
+            <img class="soc-image hidden" id="soc-left-image" />
             <div class="soc-value" id="soc-left-value">—</div>
             <div class="soc-name" id="soc-left-name"></div>
           </div>
@@ -569,6 +585,7 @@ class ZaptecChargerCard extends HTMLElement {
 
           <div class="soc-tile" id="soc-right">
             <ha-icon id="soc-right-icon"></ha-icon>
+            <img class="soc-image hidden" id="soc-right-image" />
             <div class="soc-value" id="soc-right-value">—</div>
             <div class="soc-name" id="soc-right-name"></div>
           </div>
@@ -712,8 +729,19 @@ class ZaptecChargerCard extends HTMLElement {
 
     const value = this._num(entityId);
     const icon  = $(`soc-${side}-icon`);
-    icon.setAttribute('icon', cfg[`${side}_soc_icon`] || DEFAULTS[`${side}_soc_icon`]);
-    icon.style.color = cfg[`${side}_soc_color`] || DEFAULTS[`${side}_soc_color`];
+    const image = $(`soc-${side}-image`);
+    const imageUrl = cfg[`${side}_soc_image`];
+
+    if (imageUrl) {
+      image.setAttribute('src', imageUrl);
+      image.classList.remove('hidden');
+      icon.classList.add('hidden');
+    } else {
+      image.classList.add('hidden');
+      icon.classList.remove('hidden');
+      icon.setAttribute('icon', cfg[`${side}_soc_icon`] || DEFAULTS[`${side}_soc_icon`]);
+      icon.style.color = cfg[`${side}_soc_color`] || DEFAULTS[`${side}_soc_color`];
+    }
     $(`soc-${side}-value`).textContent = isNaN(value) ? '—' : `${Math.round(value)}%`;
     $(`soc-${side}-name`).textContent  = cfg[`${side}_soc_name`] || '';
   }
