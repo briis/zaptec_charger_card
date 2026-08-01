@@ -14,3 +14,4 @@ Thumbs.db
 
 # dist/ is intentionally NOT ignored — HACS installs the built artifact directly from the repo
 .claude/settings.json
+.claude/launch.json
