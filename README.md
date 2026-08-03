@@ -26,15 +26,37 @@ scheduled start reliable even when no browser has the dashboard open. See [Requi
 
 **Light theme**
 
-![Zaptec Go 2 Charger Card, no car connected, light theme](https://raw.githubusercontent.com/briis/zaptec_charger_card/main/images/zaptec_card_no_car_light.png)
-![Zaptec Go 2 Charger Card, Ready, light theme](https://raw.githubusercontent.com/briis/zaptec_charger_card/main/images/zaptec_card_charge_ready_light.png)
+<table>
+<tr>
+<td align="center"><img src="https://raw.githubusercontent.com/briis/zaptec_charger_card/main/images/zaptec_card_no_car_light.png" width="400" alt="No car connected, light theme"/><br/><sub>No car connected</sub></td>
+<td align="center"><img src="https://raw.githubusercontent.com/briis/zaptec_charger_card/main/images/zaptec_card_charge_ready_light.png" width="400" alt="Ready, light theme"/><br/><sub>Ready</sub></td>
+</tr>
+<tr>
+<td align="center"><img src="https://raw.githubusercontent.com/briis/zaptec_charger_card/main/images/zaptec_card_charge_scheduled_light.png" width="400" alt="Scheduled, light theme"/><br/><sub>Scheduled</sub></td>
+<td align="center"><img src="https://raw.githubusercontent.com/briis/zaptec_charger_card/main/images/zaptec_card_charging_light.png" width="400" alt="Charging, light theme"/><br/><sub>Charging</sub></td>
+</tr>
+<tr>
+<td align="center"><img src="https://raw.githubusercontent.com/briis/zaptec_charger_card/main/images/zaptec_card_charge_finished_light.png" width="400" alt="Finished, light theme"/><br/><sub>Finished</sub></td>
+<td></td>
+</tr>
+</table>
 
 **Dark theme**
 
-![Zaptec Go 2 Charger Card, no car connected, dark theme](https://raw.githubusercontent.com/briis/zaptec_charger_card/main/images/zaptec_card_no_car_dark.png)
-![Zaptec Go 2 Charger Card, Ready, dark theme](https://raw.githubusercontent.com/briis/zaptec_charger_card/main/images/zaptec_card_charge_ready_dark.png)
-
-More screenshots (active charging, scheduled start, finished) will be added once a car is connected.
+<table>
+<tr>
+<td align="center"><img src="https://raw.githubusercontent.com/briis/zaptec_charger_card/main/images/zaptec_card_no_car_dark.png" width="400" alt="No car connected, dark theme"/><br/><sub>No car connected</sub></td>
+<td align="center"><img src="https://raw.githubusercontent.com/briis/zaptec_charger_card/main/images/zaptec_card_charge_ready_dark.png" width="400" alt="Ready, dark theme"/><br/><sub>Ready</sub></td>
+</tr>
+<tr>
+<td align="center"><img src="https://raw.githubusercontent.com/briis/zaptec_charger_card/main/images/zaptec_card_charge_scheduled_dark.png" width="400" alt="Scheduled, dark theme"/><br/><sub>Scheduled</sub></td>
+<td align="center"><img src="https://raw.githubusercontent.com/briis/zaptec_charger_card/main/images/zaptec_card_charging_dark.png" width="400" alt="Charging, dark theme"/><br/><sub>Charging</sub></td>
+</tr>
+<tr>
+<td align="center"><img src="https://raw.githubusercontent.com/briis/zaptec_charger_card/main/images/zaptec_card_charge_finished_dark.png" width="400" alt="Finished, dark theme"/><br/><sub>Finished</sub></td>
+<td></td>
+</tr>
+</table>
 
 ---
 
