@@ -27,10 +27,12 @@ scheduled start reliable even when no browser has the dashboard open. See [Requi
 **Light theme**
 
 ![Zaptec Go 2 Charger Card, no car connected, light theme](https://raw.githubusercontent.com/briis/zaptec_charger_card/main/images/zaptec_card_no_car_light.png)
+![Zaptec Go 2 Charger Card, Ready, light theme](https://raw.githubusercontent.com/briis/zaptec_charger_card/main/images/zaptec_card_charge_ready_light.png)
 
 **Dark theme**
 
 ![Zaptec Go 2 Charger Card, no car connected, dark theme](https://raw.githubusercontent.com/briis/zaptec_charger_card/main/images/zaptec_card_no_car_dark.png)
+![Zaptec Go 2 Charger Card, Ready, dark theme](https://raw.githubusercontent.com/briis/zaptec_charger_card/main/images/zaptec_card_charge_ready_dark.png)
 
 More screenshots (active charging, scheduled start, finished) will be added once a car is connected.
 
@@ -54,7 +56,7 @@ names vary by installation — yours may not say `ev_ev_charger`):
 - `button.<charger>_authorize_charging` / `button.<charger>_deauthorize_charging`
 - `sensor.<charger>_charger_power`, `sensor.<charger>_charger_current`, `sensor.<charger>_session_total_charge`
 - Two Zaptec **devices** per charger — the charging circuit and the charger itself often have
-  *different* device IDs. Find both under **Settings → Devices & services → Zaptec**, or by opening
+  _different_ device IDs. Find both under **Settings → Devices & services → Zaptec**, or by opening
   **Developer tools → Actions**, picking `zaptec.limit_current` / `zaptec.authorize_charging`, and
   using the device picker to see which device each service expects.
 
@@ -62,11 +64,11 @@ names vary by installation — yours may not say `ev_ev_charger`):
 
 Create these under **Settings → Devices & services → Helpers → Create helper**:
 
-| Helper | Type | Notes |
-|---|---|---|
-| `input_boolean.zaptec_is_authorized` | Toggle | Tracks whether the charger is currently authorized |
-| `input_boolean.zaptec_scheduled_charge_enabled` | Toggle | Tracks whether a scheduled start is pending |
-| `input_datetime.zaptec_scheduled_start_time` | Date and/or time → **Time only** | Backing entity for the card's time picker |
+| Helper                                          | Type                             | Notes                                              |
+| ----------------------------------------------- | -------------------------------- | -------------------------------------------------- |
+| `input_boolean.zaptec_is_authorized`            | Toggle                           | Tracks whether the charger is currently authorized |
+| `input_boolean.zaptec_scheduled_charge_enabled` | Toggle                           | Tracks whether a scheduled start is pending        |
+| `input_datetime.zaptec_scheduled_start_time`    | Date and/or time → **Time only** | Backing entity for the card's time picker          |
 
 Equivalent YAML (`configuration.yaml`), if you prefer helpers as code:
 
@@ -284,37 +286,37 @@ above) or open the visual editor and map each field to your own entities/scripts
 
 Add the card via the UI card picker (**Zaptec Go 2 Charger Card**) or paste the YAML directly. Every option below has a default matching a typical Zaptec HA integration setup, and can be overridden through the visual editor.
 
-| Option | Type | Default | Description |
-|---|---|---|---|
-| `type` | string | — | `custom:zaptec-charger-card` |
-| `entity_charger_mode` | string | `sensor.ev_ev_charger_charger_mode` | Drives the state machine (`disconnected` / `connected_requesting` / `connected_charging` / `connected_finished`) |
-| `entity_charging_switch` | string | `switch.ev_ev_charger_charging` | Used by the Stop charging button |
-| `entity_authorize_button` | string | `button.ev_ev_charger_authorize_charging` | Referenced by your authorize script flow |
-| `entity_deauthorize_button` | string | `button.ev_ev_charger_deauthorize_charging` | Referenced by your deauthorize automation |
-| `entity_is_authorized` | string | `input_boolean.zaptec_is_authorized` | Authorized-state helper |
-| `entity_schedule_enabled` | string | `input_boolean.zaptec_scheduled_charge_enabled` | Schedule-active helper, toggled by the card's schedule button |
-| `entity_schedule_time` | string | `input_datetime.zaptec_scheduled_start_time` | Backing entity for the time picker |
-| `entity_price` | string | `sensor.stromligning_current_price_vat` | Live electricity price |
-| `entity_session_energy` | string | `sensor.ev_ev_charger_session_total_charge` | kWh charged this session |
-| `entity_power` | string | `sensor.ev_ev_charger_charger_power` | Live power draw (kW) |
-| `entity_current` | string | `sensor.ev_ev_charger_charger_current` | Live current draw (A) |
-| `device_id` | string | — | Zaptec charger device, passed to `zaptec.limit_current` calls made by the amp slider. In the visual editor this is a device picker (filtered to the Zaptec integration), not a manual ID field. |
-| `script_start_now` | string | `script.zaptec_start_charging_now` | Run when "Start now" is tapped |
-| `script_schedule` | string | `script.zaptec_schedule_charging` | Run when "Schedule start" is tapped |
-| `script_cancel_schedule` | string | `script.zaptec_cancel_scheduled_charging` | Run when "Cancel scheduled start" is tapped |
-| `min_current` | number | `6` | Amp slider minimum |
-| `max_current` | number | `16` | Amp slider maximum |
-| `title` | string | `Zaptec Go 2` | Card title |
-| `left_soc_entity` | string | — | Optional sensor (%) shown left of the illustration, e.g. a car's battery state of charge. Hidden when unset. |
-| `left_soc_name` | string | — | Label shown under the left sensor's value |
-| `left_soc_icon` | string | `mdi:car-electric` | Icon for the left sensor |
-| `left_soc_image` | string | — | Optional image URL/path (e.g. `/local/car.png`) for the left sensor. Overrides `left_soc_icon` when set. |
-| `left_soc_color` | string | `#03a9f4` | Icon color for the left sensor (any CSS color); ignored when `left_soc_image` is set |
-| `right_soc_entity` | string | — | Optional sensor (%) shown right of the illustration. Hidden when unset. |
-| `right_soc_name` | string | — | Label shown under the right sensor's value |
-| `right_soc_icon` | string | `mdi:car-electric` | Icon for the right sensor |
-| `right_soc_image` | string | — | Optional image URL/path (e.g. `/local/car.png`) for the right sensor. Overrides `right_soc_icon` when set. |
-| `right_soc_color` | string | `#03a9f4` | Icon color for the right sensor (any CSS color); ignored when `right_soc_image` is set |
+| Option                      | Type   | Default                                         | Description                                                                                                                                                                                     |
+| --------------------------- | ------ | ----------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `type`                      | string | —                                               | `custom:zaptec-charger-card`                                                                                                                                                                    |
+| `entity_charger_mode`       | string | `sensor.ev_ev_charger_charger_mode`             | Drives the state machine (`disconnected` / `connected_requesting` / `connected_charging` / `connected_finished`)                                                                                |
+| `entity_charging_switch`    | string | `switch.ev_ev_charger_charging`                 | Used by the Stop charging button                                                                                                                                                                |
+| `entity_authorize_button`   | string | `button.ev_ev_charger_authorize_charging`       | Referenced by your authorize script flow                                                                                                                                                        |
+| `entity_deauthorize_button` | string | `button.ev_ev_charger_deauthorize_charging`     | Referenced by your deauthorize automation                                                                                                                                                       |
+| `entity_is_authorized`      | string | `input_boolean.zaptec_is_authorized`            | Authorized-state helper                                                                                                                                                                         |
+| `entity_schedule_enabled`   | string | `input_boolean.zaptec_scheduled_charge_enabled` | Schedule-active helper, toggled by the card's schedule button                                                                                                                                   |
+| `entity_schedule_time`      | string | `input_datetime.zaptec_scheduled_start_time`    | Backing entity for the time picker                                                                                                                                                              |
+| `entity_price`              | string | `sensor.stromligning_current_price_vat`         | Live electricity price                                                                                                                                                                          |
+| `entity_session_energy`     | string | `sensor.ev_ev_charger_session_total_charge`     | kWh charged this session                                                                                                                                                                        |
+| `entity_power`              | string | `sensor.ev_ev_charger_charger_power`            | Live power draw (kW)                                                                                                                                                                            |
+| `entity_current`            | string | `sensor.ev_ev_charger_charger_current`          | Live current draw (A)                                                                                                                                                                           |
+| `device_id`                 | string | —                                               | Zaptec charger device, passed to `zaptec.limit_current` calls made by the amp slider. In the visual editor this is a device picker (filtered to the Zaptec integration), not a manual ID field. |
+| `script_start_now`          | string | `script.zaptec_start_charging_now`              | Run when "Start now" is tapped                                                                                                                                                                  |
+| `script_schedule`           | string | `script.zaptec_schedule_charging`               | Run when "Schedule start" is tapped                                                                                                                                                             |
+| `script_cancel_schedule`    | string | `script.zaptec_cancel_scheduled_charging`       | Run when "Cancel scheduled start" is tapped                                                                                                                                                     |
+| `min_current`               | number | `6`                                             | Amp slider minimum                                                                                                                                                                              |
+| `max_current`               | number | `16`                                            | Amp slider maximum                                                                                                                                                                              |
+| `title`                     | string | `Zaptec Go 2`                                   | Card title                                                                                                                                                                                      |
+| `left_soc_entity`           | string | —                                               | Optional sensor (%) shown left of the illustration, e.g. a car's battery state of charge. Hidden when unset.                                                                                    |
+| `left_soc_name`             | string | —                                               | Label shown under the left sensor's value                                                                                                                                                       |
+| `left_soc_icon`             | string | `mdi:car-electric`                              | Icon for the left sensor                                                                                                                                                                        |
+| `left_soc_image`            | string | —                                               | Optional image URL/path (e.g. `/local/car.png`) for the left sensor. Overrides `left_soc_icon` when set.                                                                                        |
+| `left_soc_color`            | string | `#03a9f4`                                       | Icon color for the left sensor (any CSS color); ignored when `left_soc_image` is set                                                                                                            |
+| `right_soc_entity`          | string | —                                               | Optional sensor (%) shown right of the illustration. Hidden when unset.                                                                                                                         |
+| `right_soc_name`            | string | —                                               | Label shown under the right sensor's value                                                                                                                                                      |
+| `right_soc_icon`            | string | `mdi:car-electric`                              | Icon for the right sensor                                                                                                                                                                       |
+| `right_soc_image`           | string | —                                               | Optional image URL/path (e.g. `/local/car.png`) for the right sensor. Overrides `right_soc_icon` when set.                                                                                      |
+| `right_soc_color`           | string | `#03a9f4`                                       | Icon color for the right sensor (any CSS color); ignored when `right_soc_image` is set                                                                                                          |
 
 ### Example
 
@@ -340,22 +342,22 @@ title: Zaptec Go 2
 
 The action buttons follow the same precedence as a typical hand-built Zaptec dashboard:
 
-| Button | Shown when |
-|---|---|
-| Start now | mode is not `disconnected` and not `connected_charging` |
-| Schedule start | mode is not `disconnected`/`connected_charging`, and the schedule is not already enabled |
-| Stop charging | mode is `connected_charging` |
-| Cancel scheduled start | mode is not `connected_charging`, and the schedule is enabled |
+| Button                 | Shown when                                                                               |
+| ---------------------- | ---------------------------------------------------------------------------------------- |
+| Start now              | mode is not `disconnected` and not `connected_charging`                                  |
+| Schedule start         | mode is not `disconnected`/`connected_charging`, and the schedule is not already enabled |
+| Stop charging          | mode is `connected_charging`                                                             |
+| Cancel scheduled start | mode is not `connected_charging`, and the schedule is enabled                            |
 
 ---
 
 ## Grid layout
 
-| Property | Value |
-|---|---|
-| Default columns | 6 |
-| Minimum | 4 × 6 |
-| Maximum columns | 12 |
+| Property        | Value |
+| --------------- | ----- |
+| Default columns | 6     |
+| Minimum         | 4 × 6 |
+| Maximum columns | 12    |
 
 ---
 
