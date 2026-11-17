@@ -119,7 +119,7 @@
     <label>
       Schedule automation
       <select id="automationSelect">
-        <option value="none" selected>doesn't exist</option>
+        <option value="none" selected>not set up (no helper/automation)</option>
         <option value="off">off</option>
         <option value="on">on</option>
       </select>
@@ -256,6 +256,8 @@
 
     // Fake automation store, as written by POST config/automation/config/<id>
     const automations = {}; // id -> { config, entityId, state }
+    // Fake storage helpers, as created by input_datetime/create
+    const helpers = {};     // entityId -> { name, state }
     let availableCurrent = 16;
 
     function slug(s) { return s.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, ''); }
@@ -279,6 +281,21 @@
 
     function onlyAutomation() { return Object.values(automations)[0]; }
 
+    async function callWS(msg) {
+      console.log('[hass.callWS]', msg);
+      if (!$('adminInput').checked) throw new Error('Unauthorized (admin only)');
+      if (msg.type === 'input_datetime/create') {
+        const entityId = `input_datetime.${slug(msg.name)}`;
+        setTimeout(() => { helpers[entityId] = { name: msg.name, state: '00:00:00' }; pushUpdate(); }, 200);
+        return { id: slug(msg.name), name: msg.name };
+      }
+      if (msg.type === 'automation/config') {
+        const a = Object.entries(automations).find(([, x]) => x.entityId === msg.entity_id);
+        return { config: a ? { id: a[0], ...a[1].config } : null };
+      }
+      throw new Error('unknown ws command ' + msg.type);
+    }
+
     function callService(domain, service, data, target) {
       console.log('[hass.callService]', domain + '.' + service, { data, target });
 
@@ -292,6 +309,9 @@
       if (domain === 'button' && service === 'press' && target.entity_id.endsWith('_authorize_charging')) {
         $('authorizedInput').checked = true;
         if (availableCurrent > 0) $('modeSelect').value = 'connected_charging';
+      }
+      if (domain === 'input_datetime' && service === 'set_datetime' && helpers[target.entity_id]) {
+        helpers[target.entity_id].state = data.time;
       }
       if (domain === 'switch' && service === 'turn_off') {
         $('modeSelect').value = 'connected_finished';
@@ -342,11 +362,6 @@
 
       const mode    = $('modeSelect').value;
       const current = $('currentInput').value;
-      const autoSel = $('automationSelect').value;
-
-      // The toolbar can force the automation state (incl. deleting it).
-      if (autoSel === 'none') for (const k of Object.keys(automations)) delete automations[k];
-      else if (onlyAutomation()) onlyAutomation().state = autoSel;
 
       const states = {
         'sensor.ev_ev_charger_charger_mode':            mkState(mode),
@@ -364,6 +379,9 @@
         'sensor.left_car_state_of_charge':              mkState($('leftSocValue').value, '%'),
         'sensor.right_car_state_of_charge':             mkState($('rightSocValue').value, '%'),
       };
+      for (const [entityId, h] of Object.entries(helpers)) {
+        states[entityId] = mkState(h.state, undefined, { friendly_name: h.name, has_date: false, has_time: true, editable: true });
+      }
       for (const [id, a] of Object.entries(automations)) {
         states[a.entityId] = mkState(a.state, undefined, { id, friendly_name: a.config.alias });
       }
@@ -376,6 +394,7 @@
         devices: DEVICE_REGISTRY,
         callService,
         callApi,
+        callWS,
       };
     }
 
@@ -390,11 +409,12 @@
       card.hass = makeHass();
     }
     window.__automations = automations; // for poking at from the console
+    window.__helpers = helpers;
 
     customElements.whenDefined('zaptec-charger-card').then(() => pushUpdate());
 
     [
-      'modeSelect', 'automationSelect', 'authorizedInput', 'adminInput', 'priceInput', 'powerInput',
+      'modeSelect', 'authorizedInput', 'adminInput', 'priceInput', 'powerInput',
       'currentInput', 'energyInput', 'langSelect',
       'leftSocEnabled', 'leftSocValue', 'leftSocName', 'leftSocColor', 'leftSocImage',
       'rightSocEnabled', 'rightSocValue', 'rightSocName', 'rightSocColor', 'rightSocImage',
@@ -402,6 +422,17 @@
     ].forEach(id => {
       $(id).addEventListener('input', pushUpdate);
       $(id).addEventListener('change', pushUpdate);
+    });
+
+    // The toolbar can force the automation state, or wipe helper + automation.
+    $('automationSelect').addEventListener('change', e => {
+      if (e.target.value === 'none') {
+        for (const k of Object.keys(automations)) delete automations[k];
+        for (const k of Object.keys(helpers)) delete helpers[k];
+      } else if (onlyAutomation()) {
+        onlyAutomation().state = e.target.value;
+      }
+      pushUpdate();
     });
 
     $('themeSelect').addEventListener('change', e => {

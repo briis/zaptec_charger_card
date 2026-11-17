@@ -7,8 +7,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 A Home Assistant custom Lovelace card distributed via HACS (as a custom repository, not in the
 default store) for a Zaptec Go 2 EV charger. Since v2 it is self-contained: it auto-detects the Zaptec
 integration's entities, calls the Zaptec services directly for start/stop/amp limit, and owns the
-scheduled start through **one card-managed automation** that it writes via HA's automation config API
-(`POST config/automation/config/<id>`). The automation is needed because a browser-only card can't
+scheduled start through **one card-managed `input_datetime` helper + one automation** that it creates
+itself (WS `input_datetime/create`, `POST config/automation/config/<id>`). The automation is needed because a browser-only card can't
 guarantee firing an action at the scheduled time if no dashboard is open.
 
 The v1 setup (3 helpers, 3 scripts, 3 automations) still works as **legacy mode**: active when
@@ -40,14 +40,15 @@ npm start          # rollup --watch + serve on :3000 (run inside the container)
 ```
 
 Open http://localhost:3000/dev-preview.html to preview the card live. Controls let you fake: charger
-mode, whether the schedule automation exists / is on / off, the Authorized sensor, admin vs non-admin
+mode, whether the schedule is set up (helper + automation) / on / off, the Authorized sensor, admin vs non-admin
 user, price, power, per-phase current, session energy, theme, and language. The harness provides a fake
 `hass.entities`/`hass.devices` registry (one installation + one charger device in the same config
 entry) so auto-detection runs as on a real install. Every `hass.callService(...)` and
-`hass.callApi(...)` call is logged to the browser console and reflected back into the fake state
+`hass.callApi(...)`/`hass.callWS(...)` call is logged to the browser console and reflected back into the fake state
 (`callApi` creates the fake automation after a short delay, like HA's reload), so you can click through
 the start/schedule/cancel/stop/slider flows without a real Home Assistant instance.
-`window.__automations` holds the automation config the card wrote.
+`window.__automations` / `window.__helpers` hold what the card created. The fake `callWS` refuses
+non-admins, like HA.
 
 `docker-compose.yml` is an alternative entry point (maps `3000:3000`), but normal dev happens via the
 VS Code devcontainer.
@@ -124,31 +125,36 @@ Without `hass.entities` (old frontends) it falls back to suffix matching over `h
 installation also has `sensor.*_available_current_phase_N` — `PHASE_CURRENT_MATCHER.exclude` keeps
 those out of the live-current calculation.
 
-### Schedule automation
+### Schedule (helper + automation)
 
-- id `zaptec_charger_card_schedule_<schedule_id || installation device id>`; found in `hass.states`
-  by `attributes.id`.
-- The time lives in the alias (`… scheduled start HH:MM`) so non-admins can read it from the entity's
-  `friendly_name` — `config/automation/config` reads need admin.
-- Its on/off state is the "schedule enabled" state.
+- Time: an `input_datetime` storage helper named `HELPER_NAME` (+ ` (<schedule_id>)`), created over
+  WS `input_datetime/create`. Found in `hass.states` **by friendly_name**, not entity_id (the entity
+  can get a `_2` suffix or be renamed). Changing the time is `input_datetime.set_datetime`, which any
+  user may call — that's the point of the helper.
+- Automation: id `zaptec_charger_card_schedule_<schedule_id || installation device id>`, found in
+  `hass.states` by `attributes.id`. Time trigger `at: <helper entity_id>`. Its on/off state is the
+  "schedule enabled" state.
 - On fire: `limit_current` → max, authorize if needed, then `automation.turn_off` on itself with
   `stop_actions: false` (the default `true` would abort its own run). A second trigger (charger mode →
   `disconnected`) just turns it off.
-- `_saveSchedule(time, enabled)` skips the write when the time is unchanged (so non-admins can still
-  toggle), otherwise POSTs, then **waits until the reloaded entity shows the new time** before
-  `turn_on`/`turn_off` — the reload is async and would otherwise restore the old state.
-- Writing needs admin; the time input is disabled for non-admins.
+- `_ensureSchedule(time)` creates whatever is missing (admin only): helper → set its time →
+  POST automation → wait for it to appear → turn it off. Callers then turn it on if needed.
+- `_syncAutomation()`: once per card instance, for admins, reads the automation over WS
+  `automation/config`, compares with `_buildAutomation()` (`stableJson`, sorted keys) and rewrites it if
+  the card's settings changed — restoring its on/off state after the async reload.
+- Non-admins: everything works once both exist (`_scheduleReady()`); before that the time picker,
+  toggle and Schedule start are disabled with a tooltip.
 
 ### Actions → services (built-in mode)
 
 | Action | Service call |
 |---|---|
 | Start now | turn schedule automation off → `zaptec.limit_current` (max) → 2 s → `button.press` authorize if mode is `connected_requesting` and *Authorized* is off |
-| Schedule start | `zaptec.limit_current` (0) → 2 s → authorize (same rule) → `_saveSchedule(time, true)` |
+| Schedule start | `zaptec.limit_current` (0) → 2 s → authorize (same rule) → `_ensureSchedule` → `automation.turn_on` |
 | Cancel schedule | `automation.turn_off` |
 | Stop charging | `switch.turn_off` on the charging switch |
-| Schedule toggle | `automation.toggle` (or create+enable if missing) |
-| Time picker | `_saveSchedule(time, currentEnabled)` |
+| Schedule toggle | `automation.toggle` (or `_ensureSchedule` + turn on if not set up) |
+| Time picker | `input_datetime.set_datetime` on the helper (`_ensureSchedule` first if not set up) |
 | Amp slider | `zaptec.limit_current` with `device_id` + `available_current`, fired on `change` (not `input`) |
 
 In legacy mode the buttons call the configured `script.*`, the toggle `input_boolean.toggle` and the

@@ -69,7 +69,7 @@ const TRANSLATIONS = {
     editor_right_soc_icon:           'Right car icon',
     editor_right_soc_image:          'Right car image URL (optional, overrides icon)',
     editor_right_soc_color:          'Right car icon color',
-    schedule_admin_only: 'Kun administratorer kan ændre det planlagte tidspunkt',
+    schedule_admin_only: 'Planlægningen skal sættes op én gang af en administrator',
     action_failed:       'Zaptec-kortet: handlingen fejlede ({error})',
     editor_charger_device_id:        'Zaptec charger (optional, auto-detected)',
     editor_entity_authorized:        'Authorized sensor (auto-detected)',
@@ -139,7 +139,7 @@ const TRANSLATIONS = {
     editor_right_soc_icon:           'Right car icon',
     editor_right_soc_image:          'Right car image URL (optional, overrides icon)',
     editor_right_soc_color:          'Right car icon color',
-    schedule_admin_only: 'Only administrators can change the scheduled time',
+    schedule_admin_only: 'The schedule has to be set up once by an administrator',
     action_failed:       'Zaptec card: action failed ({error})',
     editor_charger_device_id:        'Zaptec charger (optional, auto-detected)',
     editor_entity_authorized:        'Authorized sensor (auto-detected)',
@@ -222,6 +222,14 @@ const PHASE_CURRENT_MATCHER = {
 
 const DEFAULT_SCHEDULE_TIME = '06:00';
 const AUTOMATION_PREFIX     = 'zaptec_charger_card_schedule';
+const AUTOMATION_ALIAS      = 'Zaptec Charger Card – scheduled start';
+const HELPER_NAME           = 'Zaptec Charger Card schedule time';
+
+/** JSON with sorted keys, to compare automation configs regardless of key order. */
+const stableJson = v => JSON.stringify(v, (k, x) =>
+  x && typeof x === 'object' && !Array.isArray(x)
+    ? Object.fromEntries(Object.keys(x).sort().map(key => [key, x[key]]))
+    : x);
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
@@ -620,7 +628,8 @@ class ZaptecChargerCard extends HTMLElement {
     this._busy        = false;
     this._resolved    = null;   // { entities: {role: entity_id}, phases: [...], deviceId }
     this._resolvedKey = null;
-    this._pendingTime = null;   // time picked before the schedule automation exists
+    this._pendingTime = null;   // time picked before the schedule helper exists
+    this._synced      = false;  // automation checked against the card's settings this session
   }
 
   setConfig(config) {
@@ -629,6 +638,7 @@ class ZaptecChargerCard extends HTMLElement {
     this._config     = { ...DEFAULTS, ...config };
     this._built      = false;
     this._resolvedKey = null;
+    this._synced      = false;
     this._buildDOM();
     if (this._hass) this._update();
   }
@@ -900,11 +910,20 @@ class ZaptecChargerCard extends HTMLElement {
         || null;
   }
 
-  /* ---------- schedule (built-in: one card-managed automation) ---------- */
+  /* ---------- schedule (built-in: card-managed helper + automation) ---------- */
+  //
+  // The time lives in an input_datetime helper, so anyone can change it with
+  // input_datetime.set_datetime. The automation triggers on that helper and
+  // its on/off state is "schedule active". Creating either one needs an admin;
+  // after that every user can use the schedule fully.
 
   _automationId() {
     const raw = this._config.schedule_id || this._deviceId() || 'default';
     return `${AUTOMATION_PREFIX}_${String(raw).toLowerCase().replace(/[^a-z0-9_]/g, '_')}`;
+  }
+
+  _helperName() {
+    return this._config.schedule_id ? `${HELPER_NAME} (${this._config.schedule_id})` : HELPER_NAME;
   }
 
   _scheduleAutomation() {
@@ -915,10 +934,17 @@ class ZaptecChargerCard extends HTMLElement {
     return entityId ? { entityId, stateObj: states[entityId] } : null;
   }
 
-  /** The time is kept in the automation's name, so every user can read it from its state. */
-  _automationTime(stateObj) {
-    const m = (stateObj?.attributes?.friendly_name || '').match(/(\d{1,2}:\d{2})\s*$/);
-    return m ? m[1].padStart(5, '0') : null;
+  /** The card's time helper, found by its name (entity ids can be renamed or get a _2 suffix). */
+  _scheduleHelper() {
+    const name = this._helperName();
+    const states = this._hass?.states || {};
+    const entityId = Object.keys(states).find(k =>
+      k.startsWith('input_datetime.') && states[k].attributes?.friendly_name === name);
+    return entityId ? { entityId, stateObj: states[entityId] } : null;
+  }
+
+  _scheduleReady() {
+    return !!(this._scheduleAutomation() && this._scheduleHelper());
   }
 
   _scheduleEnabled() {
@@ -927,19 +953,19 @@ class ZaptecChargerCard extends HTMLElement {
   }
 
   _scheduleTime() {
-    if (this._isLegacy()) {
-      const s = this._state(this._config.entity_schedule_time);
-      return s && s.length >= 5 ? s.slice(0, 5) : null;
-    }
-    return this._automationTime(this._scheduleAutomation()?.stateObj) || this._pendingTime || DEFAULT_SCHEDULE_TIME;
+    const s = this._isLegacy()
+      ? this._state(this._config.entity_schedule_time)
+      : this._scheduleHelper()?.stateObj?.state;
+    if (s && /^\d{1,2}:\d{2}/.test(s)) return s.slice(0, 5).padStart(5, '0');
+    return this._isLegacy() ? null : (this._pendingTime || DEFAULT_SCHEDULE_TIME);
   }
 
-  _buildAutomation(time) {
+  _buildAutomation(helperEntityId) {
     const mode       = this._ent('entity_charger_mode');
     const authorized = this._ent('entity_authorized');
     const authorize  = this._authorizeAction();
 
-    const triggers = [{ trigger: 'time', at: `${time}:00`, id: 'start' }];
+    const triggers = [{ trigger: 'time', at: helperEntityId, id: 'start' }];
     // Unplugging cancels a pending scheduled start.
     if (mode) triggers.push({ trigger: 'state', entity_id: mode, to: 'disconnected', id: 'unplugged' });
 
@@ -956,8 +982,8 @@ class ZaptecChargerCard extends HTMLElement {
     }
 
     return {
-      alias: `Zaptec Charger Card – scheduled start ${time}`,
-      description: 'Managed by zaptec-charger-card. Turned on/off and rewritten from the card — edits here will be overwritten. Runs once, then turns itself off.',
+      alias: AUTOMATION_ALIAS,
+      description: `Managed by zaptec-charger-card. The start time is ${helperEntityId}. Switched on/off from the card and rewritten when the card's settings change — edits here will be overwritten. Runs once, then turns itself off.`,
       mode: 'single',
       triggers,
       conditions: [],
@@ -968,24 +994,68 @@ class ZaptecChargerCard extends HTMLElement {
     };
   }
 
-  /** Create/update the schedule automation with `time`, then set it on/off. */
-  async _saveSchedule(time, enabled) {
-    const existing = this._scheduleAutomation();
-    const sameTime = existing && this._automationTime(existing.stateObj) === time;
+  /**
+   * Make sure the helper and the automation exist (admin only, once). New
+   * pieces start with `time` and switched off. Returns the automation entity id.
+   */
+  async _ensureSchedule(time) {
+    if (this._scheduleReady()) return this._scheduleAutomation().entityId;
+    if (!this._isAdmin()) throw new Error(this._t('schedule_admin_only'));
 
-    if (!sameTime) {
-      if (!this._hass.user?.is_admin) throw new Error(this._t('schedule_admin_only'));
-      await this._hass.callApi('POST', `config/automation/config/${this._automationId()}`, this._buildAutomation(time));
+    let helper = this._scheduleHelper();
+    if (!helper) {
+      await this._hass.callWS({
+        type: 'input_datetime/create',
+        name: this._helperName(),
+        icon: 'mdi:car-clock',
+        has_date: false,
+        has_time: true,
+      });
+      helper = await this._waitFor(() => this._scheduleHelper());
+      if (!helper) throw new Error('schedule time helper did not appear');
+      await this._hass.callService('input_datetime', 'set_datetime', { time: `${time}:00` }, { entity_id: helper.entityId });
     }
 
-    // Wait for the (re)loaded automation to show up with the new time before
-    // switching it — otherwise the reload can restore the old on/off state.
-    const entityId = await this._waitFor(() => {
-      const a = this._scheduleAutomation();
-      return a && this._automationTime(a.stateObj) === time ? a.entityId : null;
-    });
-    if (!entityId) throw new Error('schedule automation did not appear');
-    await this._hass.callService('automation', enabled ? 'turn_on' : 'turn_off', {}, { entity_id: entityId });
+    let automation = this._scheduleAutomation();
+    if (!automation) {
+      await this._writeAutomation(helper.entityId);
+      automation = await this._waitFor(() => this._scheduleAutomation());
+      if (!automation) throw new Error('schedule automation did not appear');
+      await this._hass.callService('automation', 'turn_off', {}, { entity_id: automation.entityId });
+    }
+    return automation.entityId;
+  }
+
+  _writeAutomation(helperEntityId) {
+    return this._hass.callApi('POST', `config/automation/config/${this._automationId()}`, this._buildAutomation(helperEntityId));
+  }
+
+  /**
+   * Admin only, once per card instance: rewrite the automation if the card's
+   * settings (max current, entities, device) no longer match what it holds.
+   * Keeps its on/off state across the rewrite.
+   */
+  async _syncAutomation() {
+    if (this._synced || this._isLegacy() || !this._isAdmin() || !this._scheduleReady()) return;
+    this._synced = true;
+    const { entityId, stateObj } = this._scheduleAutomation();
+    const wanted = this._buildAutomation(this._scheduleHelper().entityId);
+    try {
+      const { config } = await this._hass.callWS({ type: 'automation/config', entity_id: entityId });
+      const { id: _id, ...current } = config || {};
+      if (stableJson(current) === stableJson(wanted)) return;
+      const wasOn = stateObj.state === 'on';
+      const before = stateObj.last_updated;
+      await this._writeAutomation(this._scheduleHelper().entityId);
+      // Wait for the reload to replace the entity before restoring its state.
+      await this._waitFor(() => this._scheduleAutomation()?.stateObj?.last_updated !== before, 5000);
+      const now = this._scheduleAutomation();
+      if (now && (now.stateObj.state === 'on') !== wasOn) {
+        await this._hass.callService('automation', wasOn ? 'turn_on' : 'turn_off', {}, { entity_id: now.entityId });
+      }
+    } catch (err) {
+      console.warn('[zaptec-charger-card] could not sync the schedule automation', err);
+    }
   }
 
   async _waitFor(fn, timeoutMs = 10000) {
@@ -1002,6 +1072,10 @@ class ZaptecChargerCard extends HTMLElement {
     if (a && a.stateObj.state === 'on') {
       await this._hass.callService('automation', 'turn_off', {}, { entity_id: a.entityId });
     }
+  }
+
+  _isAdmin() {
+    return this._hass?.user ? !!this._hass.user.is_admin : true;
   }
 
   /* ---------- actions ---------- */
@@ -1067,7 +1141,8 @@ class ZaptecChargerCard extends HTMLElement {
     await this._limitCurrent(0);
     await sleep(2000);
     await this._authorizeIfNeeded();
-    await this._saveSchedule(this._scheduleTime(), true);
+    const automation = await this._ensureSchedule(this._scheduleTime());
+    await this._hass.callService('automation', 'turn_on', {}, { entity_id: automation });
   }
 
   async _cancelSchedule() {
@@ -1083,9 +1158,11 @@ class ZaptecChargerCard extends HTMLElement {
     if (this._isLegacy()) {
       return this._hass.callService('input_boolean', 'toggle', {}, { entity_id: this._config.entity_schedule_enabled });
     }
-    const a = this._scheduleAutomation();
-    if (a) return this._hass.callService('automation', 'toggle', {}, { entity_id: a.entityId });
-    await this._saveSchedule(this._scheduleTime(), true);
+    if (this._scheduleReady()) {
+      return this._hass.callService('automation', 'toggle', {}, { entity_id: this._scheduleAutomation().entityId });
+    }
+    const automation = await this._ensureSchedule(this._scheduleTime());
+    await this._hass.callService('automation', 'turn_on', {}, { entity_id: automation });
   }
 
   async _setScheduleTime(time) {
@@ -1093,8 +1170,11 @@ class ZaptecChargerCard extends HTMLElement {
       return this._hass.callService('input_datetime', 'set_datetime', { time: `${time}:00` }, { entity_id: this._config.entity_schedule_time });
     }
     this._pendingTime = time;
-    // Saving creates the automation (switched off) if it doesn't exist yet, so the time persists.
-    await this._saveSchedule(time, this._scheduleEnabled());
+    // First time: create helper + automation (switched off) so the time persists.
+    if (!this._scheduleReady()) await this._ensureSchedule(time);
+    const helper = this._scheduleHelper();
+    if (!helper) throw new Error('schedule time helper not found');
+    await this._hass.callService('input_datetime', 'set_datetime', { time: `${time}:00` }, { entity_id: helper.entityId });
   }
 
   /* ---------- rendering ---------- */
@@ -1147,6 +1227,7 @@ class ZaptecChargerCard extends HTMLElement {
   _update() {
     if (!this._built || !this._hass || !this._config) return;
     this._resolve();
+    if (!this._busy) this._syncAutomation();
     const cfg = this._config;
     const $ = id => this.shadowRoot.getElementById(id);
     const legacy = this._isLegacy();
@@ -1252,11 +1333,10 @@ class ZaptecChargerCard extends HTMLElement {
       }
     }
 
-    // Schedule row. Changing the time rewrites the automation, which needs an
-    // admin unless running on the v1 helpers.
-    const isAdmin   = this._hass.user ? !!this._hass.user.is_admin : true;
-    const canEdit   = legacy || isAdmin;
-    const automationExists = legacy || !!this._scheduleAutomation();
+    // Schedule row. Only the first-time setup (creating the helper and the
+    // automation) needs an admin; after that everyone can use the schedule.
+    const canEdit   = legacy || this._isAdmin() || this._scheduleReady();
+    const automationExists = canEdit;
     const timeInput = $('schedule-time');
     if (this.shadowRoot.activeElement !== timeInput && scheduleTime) timeInput.value = shortTime;
     timeInput.disabled = !canEdit || this._busy;
