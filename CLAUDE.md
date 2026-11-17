@@ -22,6 +22,9 @@ GitHub: https://github.com/briis/zaptec_charger_card
 src/zaptec-charger-card.js  — single-source card (edit this)
 dist/zaptec-charger-card.js — built output (committed, attached to releases)
 dev-preview.html            — standalone browser harness for local dev
+images/                     — README screenshots, banner.jpg, social-preview.jpg (GitHub social card)
+images/source/branding.html — source for banner/social images (render with headless Chromium, mode=banner|social)
+CHANGELOG.md                — Keep a Changelog; add an entry for every user-facing change
 rollup.config.mjs           — bundles src → dist, minifies for production
 hacs.json                   — HACS metadata (name, filename, render_readme)
 .github/workflows/
@@ -89,6 +92,7 @@ Key pieces:
 | `STYLES` | Shadow DOM CSS (light/dark theme via HA CSS custom properties), including the SVG illustration's state-driven animations (`state-disconnected/charging/scheduled/ready/finished`). |
 | `ZaptecChargerCardEditor` | UI config editor — uses `ha-form` with `editorSchema(lang)` (expandable sections for car tiles, entity overrides and legacy fields; cleared fields are dropped from the config so they fall back to auto-detect). Field labels are translated automatically via `editorLabel`. |
 | `ZaptecChargerCard` | The card itself; standard HA custom element API |
+| `zaptecEntitySuggestion` | `getEntitySuggestion` for the `window.customCards` entry (HA 2026.6+ card picker "Community" suggestions): returns `{ config }` for any `platform: zaptec` entity, adding `charger_device_id` only when there are several chargers. |
 
 ### HA card API surface
 

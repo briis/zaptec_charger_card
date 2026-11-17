@@ -1,5 +1,9 @@
 # Zaptec Go 2 Charger Card
 
+<p align="center">
+  <img src="https://raw.githubusercontent.com/briis/zaptec_charger_card/main/images/banner.jpg" alt="Zaptec Go 2 Charger Card" width="100%"/>
+</p>
+
 A custom [Home Assistant](https://www.home-assistant.io/) Lovelace card for managing a Zaptec Go 2 EV charger — start, schedule, throttle and monitor charging from a single card with an animated illustration of the charger as its centerpiece.
 
 ![HACS Custom](https://img.shields.io/badge/HACS-Custom-orange.svg)
@@ -15,6 +19,7 @@ A custom [Home Assistant](https://www.home-assistant.io/) Lovelace card for mana
 - Start now / schedule start / cancel schedule / stop charging actions
 - Scheduled start that fires server-side, even when no dashboard is open — usable by every HA user
 - **Zero setup**: finds the Zaptec entities by itself; no helpers, scripts or automations to create
+- Shows up as a suggestion in the card picker when you pick a Zaptec entity (Home Assistant 2026.6+)
 - Adapts to Home Assistant light and dark themes
 - Supports **Danish** and **English** (follows the HA language setting)
 
@@ -99,7 +104,9 @@ For what changed between versions, see the [changelog](CHANGELOG.md).
 
 ## Setup (first run)
 
-1. **Add the card.** Edit a dashboard → **Add card** → *Zaptec Go 2 Charger Card*. Leave everything
+1. **Add the card.** Edit a dashboard → **Add card** → *Zaptec Go 2 Charger Card* (on Home Assistant
+   2026.6+ you can also pick any Zaptec entity in the card picker — the card is suggested under
+   *Community*). Leave everything
    as it is: the card finds your charger, its entities and the Zaptec installation device itself.
    You can now start/stop charging and use the amp slider.
 2. **Set up the schedule — once, as an administrator.** Log in to Home Assistant with an admin account,

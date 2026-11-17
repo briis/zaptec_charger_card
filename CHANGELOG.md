@@ -28,6 +28,10 @@ Existing v1 setups keep working unchanged (see *Upgrading* below).
   (for example *Maximum current*).
 - **Own charger icon or image.** New `charger_icon` and `charger_image` options replace the built-in
   drawing. They keep the state-colored glow and animations.
+- **Card picker suggestion** (Home Assistant 2026.6+): when you pick any Zaptec entity in the card picker,
+  the card is offered under *Community*.
+- README banner and a GitHub social preview image (`images/banner.jpg`, `images/social-preview.jpg`;
+  source in `images/source/branding.html`).
 - New options: `charger_device_id`, `entity_authorized`, `entity_available_current`, `schedule_id`.
 - Errors from service calls show as a Home Assistant toast. Buttons are disabled while an action runs,
   so a double tap does nothing.

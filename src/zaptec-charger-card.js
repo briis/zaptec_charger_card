@@ -1392,6 +1392,27 @@ class ZaptecChargerCard extends HTMLElement {
 
 customElements.define('zaptec-charger-card', ZaptecChargerCard);
 
+/**
+ * HA 2026.6+: offer this card under "Community" in the card picker when the
+ * user picks any Zaptec entity. The card auto-detects everything, so the
+ * config only names the charger when there is more than one to choose from.
+ */
+function zaptecEntitySuggestion(hass, entityId) {
+  const entry = hass?.entities?.[entityId];
+  if (!entry || entry.platform !== 'zaptec') return null;
+
+  const config = { type: 'custom:zaptec-charger-card' };
+  const isChargerDevice = deviceId => Object.values(hass.entities).some(e =>
+    e.platform === 'zaptec' && e.device_id === deviceId && e.entity_id.startsWith('sensor.')
+    && (e.translation_key === 'charger_operation_mode' || e.entity_id.endsWith('_charger_mode')));
+  const chargers = new Set(Object.values(hass.entities)
+    .filter(e => e.platform === 'zaptec' && e.device_id && isChargerDevice(e.device_id))
+    .map(e => e.device_id));
+  if (chargers.size > 1 && chargers.has(entry.device_id)) config.charger_device_id = entry.device_id;
+
+  return { config };
+}
+
 window.customCards = window.customCards || [];
 window.customCards.push({
   type:             'zaptec-charger-card',
@@ -1399,4 +1420,5 @@ window.customCards.push({
   description:      'Manage a Zaptec Go 2 EV charger — start, schedule, throttle and monitor charging.',
   preview:          true,
   documentationURL: 'https://github.com/briis/zaptec_charger_card',
+  getEntitySuggestion: zaptecEntitySuggestion,
 });
