@@ -1,9 +1,11 @@
 /**
  * Zaptec Go 2 Charger Card
- * UI layer over an existing Zaptec HA setup: reads charger mode/price/energy/
- * power/current sensors, drives the same scripts/helpers the user's
- * automations already use (start now / schedule / cancel), and additionally
- * offers a live amp-limit slider via zaptec.limit_current.
+ * Self-contained: auto-detects the Zaptec integration's entities, calls the
+ * Zaptec services directly for start / stop / amp limit, and keeps the
+ * scheduled start in one card-managed automation (so it fires server-side
+ * even with no dashboard open). The v1 helper/script setup still works: if
+ * entity_schedule_enabled is configured and exists, the card runs in legacy
+ * mode.
  */
 
 const TRANSLATIONS = {
@@ -48,7 +50,7 @@ const TRANSLATIONS = {
     editor_entity_session_energy:    'Session energy sensor',
     editor_entity_power:             'Power sensor',
     editor_entity_current:           'Current sensor',
-    editor_device_id:                'Zaptec Charging Unit',
+    editor_device_id:                'Zaptec installation (auto-detected)',
     editor_script_start_now:         'Start now script',
     editor_script_schedule:          'Schedule script',
     editor_script_cancel_schedule:   'Cancel schedule script',
@@ -65,6 +67,15 @@ const TRANSLATIONS = {
     editor_right_soc_icon:           'Right car icon',
     editor_right_soc_image:          'Right car image URL (optional, overrides icon)',
     editor_right_soc_color:          'Right car icon color',
+    schedule_admin_only: 'Kun administratorer kan ændre det planlagte tidspunkt',
+    action_failed:       'Zaptec-kortet: handlingen fejlede ({error})',
+    editor_charger_device_id:        'Zaptec charger (optional, auto-detected)',
+    editor_entity_authorized:        'Authorized sensor (auto-detected)',
+    editor_entity_available_current: 'Available current (auto-detected)',
+    editor_schedule_id:              'Schedule ID (only needed for several cards per charger)',
+    editor_section_entities:         'Entities (auto-detected — override only if needed)',
+    editor_section_cars:             'Car battery tiles',
+    editor_section_legacy:           'Legacy helpers & scripts (v1 setup)',
   },
   en: {
     title:               'Zaptec Go 2',
@@ -107,7 +118,7 @@ const TRANSLATIONS = {
     editor_entity_session_energy:    'Session energy sensor',
     editor_entity_power:             'Power sensor',
     editor_entity_current:           'Current sensor',
-    editor_device_id:                'Zaptec Charging Unit',
+    editor_device_id:                'Zaptec installation (auto-detected)',
     editor_script_start_now:         'Start now script',
     editor_script_schedule:          'Schedule script',
     editor_script_cancel_schedule:   'Cancel schedule script',
@@ -124,25 +135,48 @@ const TRANSLATIONS = {
     editor_right_soc_icon:           'Right car icon',
     editor_right_soc_image:          'Right car image URL (optional, overrides icon)',
     editor_right_soc_color:          'Right car icon color',
+    schedule_admin_only: 'Only administrators can change the scheduled time',
+    action_failed:       'Zaptec card: action failed ({error})',
+    editor_charger_device_id:        'Zaptec charger (optional, auto-detected)',
+    editor_entity_authorized:        'Authorized sensor (auto-detected)',
+    editor_entity_available_current: 'Available current (auto-detected)',
+    editor_schedule_id:              'Schedule ID (only needed for several cards per charger)',
+    editor_section_entities:         'Entities (auto-detected — override only if needed)',
+    editor_section_cars:             'Car battery tiles',
+    editor_section_legacy:           'Legacy helpers & scripts (v1 setup)',
   },
 };
 
+/*
+ * Every entity is auto-detected from the Zaptec integration (see
+ * ENTITY_MATCHERS), so these defaults are all null except where there's no
+ * Zaptec entity to find (price) or a sensible numeric default.
+ *
+ * The entity_is_authorized / entity_schedule_* / script_* keys are only for
+ * the v1 helper-based setup: if entity_schedule_enabled is set AND exists, the
+ * card runs in legacy mode and behaves exactly like v1.
+ */
 const DEFAULTS = {
-  entity_charger_mode:       'sensor.ev_ev_charger_charger_mode',
-  entity_charging_switch:    'switch.ev_ev_charger_charging',
-  entity_authorize_button:   'button.ev_ev_charger_authorize_charging',
-  entity_deauthorize_button: 'button.ev_ev_charger_deauthorize_charging',
-  entity_is_authorized:      'input_boolean.zaptec_is_authorized',
-  entity_schedule_enabled:   'input_boolean.zaptec_scheduled_charge_enabled',
-  entity_schedule_time:      'input_datetime.zaptec_scheduled_start_time',
+  device_id:                 null,  // Zaptec *installation* device (zaptec.limit_current)
+  charger_device_id:         null,  // Zaptec *charger* device (only to disambiguate several chargers)
+  entity_charger_mode:       null,
+  entity_charging_switch:    null,
+  entity_authorize_button:   null,
+  entity_authorized:         null,
+  entity_available_current:  null,
   entity_price:              'sensor.stromligning_current_price_vat',
-  entity_session_energy:     'sensor.ev_ev_charger_session_total_charge',
-  entity_power:               'sensor.ev_ev_charger_charger_power',
-  entity_current:            'sensor.ev_ev_charger_charger_current',
-  device_id:                 'e58b0e3a8d33fc6560c8c7f4537bc120',
-  script_start_now:          'script.zaptec_start_charging_now',
-  script_schedule:           'script.zaptec_schedule_charging',
-  script_cancel_schedule:    'script.zaptec_cancel_scheduled_charging',
+  entity_session_energy:     null,
+  entity_power:              null,
+  entity_current:            null,
+  schedule_id:               null,
+  // legacy (v1) helper/script setup
+  entity_deauthorize_button: null,
+  entity_is_authorized:      null,
+  entity_schedule_enabled:   null,
+  entity_schedule_time:      null,
+  script_start_now:          null,
+  script_schedule:           null,
+  script_cancel_schedule:    null,
   min_current:               6,
   max_current:               16,
   title:                     null,
@@ -157,6 +191,33 @@ const DEFAULTS = {
   right_soc_image:           null,
   right_soc_color:           '#03a9f4',
 };
+
+/*
+ * How each role is found among the Zaptec integration's entities: first by
+ * the entity registry translation_key, then by entity_id suffix. `scope`
+ * says which Zaptec device it lives on (the charger or the installation).
+ */
+const ENTITY_MATCHERS = {
+  entity_charger_mode:      { domain: 'sensor',        scope: 'charger',      keys: ['charger_operation_mode', 'operation_mode', 'charger_mode'], suffixes: ['_charger_mode', '_operation_mode'] },
+  entity_charging_switch:   { domain: 'switch',        scope: 'charger',      keys: ['charging'],                                                 suffixes: ['_charging'] },
+  entity_authorize_button:  { domain: 'button',        scope: 'charger',      keys: ['authorize_charging'],                                       suffixes: ['_authorize_charging'] },
+  entity_authorized:        { domain: 'binary_sensor', scope: 'charger',      keys: ['authorized', 'charger_current_user_uuid'],                  suffixes: ['_authorized', '_authorized_power'] },
+  entity_session_energy:    { domain: 'sensor',        scope: 'charger',      keys: ['session_total_charge', 'session_energy'],                   suffixes: ['_session_total_charge'] },
+  entity_power:             { domain: 'sensor',        scope: 'charger',      keys: ['charge_power', 'total_charge_power'],                       suffixes: ['_charge_power', '_charger_power', '_total_charge_power'] },
+  entity_current:           { domain: 'sensor',        scope: 'charger',      keys: ['charger_current'],                                          suffixes: ['_charger_current'] },
+  entity_available_current: { domain: 'number',        scope: 'installation', keys: ['available_current'],                                        suffixes: ['_available_current'] },
+};
+
+/* Fallback for the live current when there's no single "current" sensor: max of the three phases. */
+const PHASE_CURRENT_MATCHER = {
+  domain: 'sensor', scope: 'charger', keys: ['current_phase1', 'current_phase2', 'current_phase3'],
+  suffixes: ['_current_phase_1', '_current_phase_2', '_current_phase_3'], exclude: ['available_current'],
+};
+
+const DEFAULT_SCHEDULE_TIME = '06:00';
+const AUTOMATION_PREFIX     = 'zaptec_charger_card_schedule';
+
+const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 /* visual state → color token, used by both the illustration and status dot */
 const STATE_COLORS = {
@@ -388,6 +449,9 @@ const STYLES = `
   .action-btn.green  ha-icon { color: #4caf50; }
   .action-btn.amber  ha-icon { color: #ffb300; }
   .action-btn.red    ha-icon { color: #ef5350; }
+  .action-btn:disabled,
+  .schedule-toggle:disabled { opacity: 0.5; cursor: default; }
+  .schedule-row input[type="time"]:disabled { opacity: 0.6; }
   .hidden { display: none !important; }
 `;
 
@@ -397,48 +461,61 @@ const ENTITY_FIELDS = [
   ['entity_charger_mode',       'sensor'],
   ['entity_charging_switch',    'switch'],
   ['entity_authorize_button',   'button'],
-  ['entity_deauthorize_button', 'button'],
-  ['entity_is_authorized',      'input_boolean'],
-  ['entity_schedule_enabled',   'input_boolean'],
-  ['entity_schedule_time',      'input_datetime'],
-  ['entity_price',              'sensor'],
+  ['entity_authorized',         'binary_sensor'],
+  ['entity_available_current',  'number'],
   ['entity_session_energy',     'sensor'],
   ['entity_power',              'sensor'],
   ['entity_current',            'sensor'],
 ];
 
-const SCRIPT_FIELDS = [
-  'script_start_now',
-  'script_schedule',
-  'script_cancel_schedule',
+const LEGACY_FIELDS = [
+  ['entity_deauthorize_button', 'button'],
+  ['entity_is_authorized',      'input_boolean'],
+  ['entity_schedule_enabled',   'input_boolean'],
+  ['entity_schedule_time',      'input_datetime'],
+  ['script_start_now',          'script'],
+  ['script_schedule',           'script'],
+  ['script_cancel_schedule',    'script'],
 ];
 
-const EDITOR_SCHEMA = [
-  { name: 'device_id', required: false, selector: { device: { integration: 'zaptec' } } },
-  ...ENTITY_FIELDS.map(([name, domain]) => ({
-    name,
-    required: false,
-    selector: { entity: { domain } },
-  })),
-  ...SCRIPT_FIELDS.map(name => ({
-    name,
-    required: false,
-    selector: { entity: { domain: 'script' } },
-  })),
-  { name: 'min_current', required: false, selector: { number: { min: 1, max: 32, step: 1, mode: 'box', unit_of_measurement: 'A' } } },
-  { name: 'max_current', required: false, selector: { number: { min: 1, max: 32, step: 1, mode: 'box', unit_of_measurement: 'A' } } },
-  { name: 'title', required: false, selector: { text: {} } },
-  { name: 'left_soc_entity',  required: false, selector: { entity: { domain: 'sensor' } } },
-  { name: 'left_soc_name',   required: false, selector: { text: {} } },
-  { name: 'left_soc_icon',   required: false, selector: { icon: {} } },
-  { name: 'left_soc_image',  required: false, selector: { text: {} } },
-  { name: 'left_soc_color',  required: false, selector: { text: {} } },
-  { name: 'right_soc_entity', required: false, selector: { entity: { domain: 'sensor' } } },
-  { name: 'right_soc_name',  required: false, selector: { text: {} } },
-  { name: 'right_soc_icon',  required: false, selector: { icon: {} } },
-  { name: 'right_soc_image', required: false, selector: { text: {} } },
-  { name: 'right_soc_color', required: false, selector: { text: {} } },
-];
+const entitySel = ([name, domain]) => ({ name, required: false, selector: { entity: { domain } } });
+
+function editorSchema(lang) {
+  return [
+    { name: 'device_id',         required: false, selector: { device: { integration: 'zaptec' } } },
+    { name: 'charger_device_id', required: false, selector: { device: { integration: 'zaptec' } } },
+    { name: 'entity_price',      required: false, selector: { entity: { domain: 'sensor' } } },
+    { name: 'min_current', required: false, selector: { number: { min: 0, max: 32, step: 1, mode: 'box', unit_of_measurement: 'A' } } },
+    { name: 'max_current', required: false, selector: { number: { min: 1, max: 32, step: 1, mode: 'box', unit_of_measurement: 'A' } } },
+    { name: 'title', required: false, selector: { text: {} } },
+    {
+      type: 'expandable', name: '', flatten: true, title: editorLabel(lang, 'section_cars'),
+      schema: [
+        { name: 'left_soc_entity',  required: false, selector: { entity: { domain: 'sensor' } } },
+        { name: 'left_soc_name',    required: false, selector: { text: {} } },
+        { name: 'left_soc_icon',    required: false, selector: { icon: {} } },
+        { name: 'left_soc_image',   required: false, selector: { text: {} } },
+        { name: 'left_soc_color',   required: false, selector: { text: {} } },
+        { name: 'right_soc_entity', required: false, selector: { entity: { domain: 'sensor' } } },
+        { name: 'right_soc_name',   required: false, selector: { text: {} } },
+        { name: 'right_soc_icon',   required: false, selector: { icon: {} } },
+        { name: 'right_soc_image',  required: false, selector: { text: {} } },
+        { name: 'right_soc_color',  required: false, selector: { text: {} } },
+      ],
+    },
+    {
+      type: 'expandable', name: '', flatten: true, title: editorLabel(lang, 'section_entities'),
+      schema: [
+        ...ENTITY_FIELDS.map(entitySel),
+        { name: 'schedule_id', required: false, selector: { text: {} } },
+      ],
+    },
+    {
+      type: 'expandable', name: '', flatten: true, title: editorLabel(lang, 'section_legacy'),
+      schema: LEGACY_FIELDS.map(entitySel),
+    },
+  ];
+}
 
 function editorLabel(lang, name) {
   const key = TRANSLATIONS[lang] ? lang : (TRANSLATIONS[lang?.split('-')[0]] ? lang.split('-')[0] : 'en');
@@ -472,8 +549,12 @@ class ZaptecChargerCardEditor extends HTMLElement {
       this.shadowRoot.innerHTML = '<ha-form></ha-form>';
       this._form = this.shadowRoot.querySelector('ha-form');
       this._form.addEventListener('value-changed', e => {
+        // Drop cleared fields so they fall back to auto-detection.
+        const config = Object.fromEntries(
+          Object.entries(e.detail.value).filter(([, v]) => v !== '' && v !== null && v !== undefined),
+        );
         this.dispatchEvent(new CustomEvent('config-changed', {
-          detail: { config: e.detail.value },
+          detail: { config },
           bubbles: true,
           composed: true,
         }));
@@ -483,9 +564,9 @@ class ZaptecChargerCardEditor extends HTMLElement {
     const lang = this._hass.language;
 
     this._form.hass         = this._hass;
-    this._form.schema       = EDITOR_SCHEMA;
+    this._form.schema       = editorSchema(lang);
     this._form.data         = this._config;
-    this._form.computeLabel = s => editorLabel(lang, s.name);
+    this._form.computeLabel = s => s.title ?? editorLabel(lang, s.name);
   }
 }
 
@@ -497,16 +578,23 @@ class ZaptecChargerCard extends HTMLElement {
   constructor() {
     super();
     this.attachShadow({ mode: 'open' });
-    this._config = null;
-    this._hass   = null;
-    this._built  = false;
+    this._config      = null;
+    this._userConfig  = null;
+    this._hass        = null;
+    this._built       = false;
     this._sliderDirty = false;
+    this._busy        = false;
+    this._resolved    = null;   // { entities: {role: entity_id}, phases: [...], deviceId }
+    this._resolvedKey = null;
+    this._pendingTime = null;   // time picked before the schedule automation exists
   }
 
   setConfig(config) {
     if (!config) throw new Error('Invalid configuration');
-    this._config = { ...DEFAULTS, ...config };
-    this._built  = false;
+    this._userConfig = { ...config };
+    this._config     = { ...DEFAULTS, ...config };
+    this._built      = false;
+    this._resolvedKey = null;
     this._buildDOM();
     if (this._hass) this._update();
   }
@@ -531,7 +619,8 @@ class ZaptecChargerCard extends HTMLElement {
 
   static getConfigElement() { return document.createElement('zaptec-charger-card-editor'); }
 
-  static getStubConfig() { return { ...DEFAULTS }; }
+  // Nothing to fill in — every Zaptec entity is auto-detected.
+  static getStubConfig() { return {}; }
 
   _langKey() {
     // hass.language is usually a bare code ("da"), but some setups report a
@@ -669,21 +758,16 @@ class ZaptecChargerCard extends HTMLElement {
 
     const $ = id => this.shadowRoot.getElementById(id);
 
-    $('btn-start').addEventListener('click', () => this._runScript(this._config.script_start_now));
-    $('btn-schedule').addEventListener('click', () => this._runScript(this._config.script_schedule));
-    $('btn-cancel').addEventListener('click', () => this._runScript(this._config.script_cancel_schedule));
-    $('btn-stop').addEventListener('click', () => {
-      this._hass.callService('switch', 'turn_off', {}, { entity_id: this._config.entity_charging_switch });
-    });
-
-    $('schedule-toggle').addEventListener('click', () => {
-      this._hass.callService('input_boolean', 'toggle', {}, { entity_id: this._config.entity_schedule_enabled });
-    });
+    $('btn-start').addEventListener('click',    () => this._guard(() => this._startNow()));
+    $('btn-schedule').addEventListener('click', () => this._guard(() => this._scheduleStart()));
+    $('btn-cancel').addEventListener('click',   () => this._guard(() => this._cancelSchedule()));
+    $('btn-stop').addEventListener('click',     () => this._guard(() => this._stopCharging()));
+    $('schedule-toggle').addEventListener('click', () => this._guard(() => this._toggleSchedule()));
 
     $('schedule-time').addEventListener('change', e => {
       const value = e.target.value; // "HH:MM"
       if (!value) return;
-      this._hass.callService('input_datetime', 'set_datetime', { time: `${value}:00` }, { entity_id: this._config.entity_schedule_time });
+      this._guard(() => this._setScheduleTime(value));
     });
 
     const slider = $('amp-slider');
@@ -693,20 +777,291 @@ class ZaptecChargerCard extends HTMLElement {
     });
     slider.addEventListener('change', () => {
       this._sliderDirty = false;
-      this._hass.callService('zaptec', 'limit_current', {
-        device_id: this._config.device_id,
-        available_current: Number(slider.value),
-      });
+      this._guard(() => this._limitCurrent(Number(slider.value)));
     });
 
     this._built = true;
   }
 
-  _runScript(entityId) {
-    if (!entityId || !this._hass) return;
-    const objectId = entityId.split('.').slice(1).join('.');
-    this._hass.callService('script', objectId, {});
+  /* ---------- entity resolution ---------- */
+
+  _isLegacy() {
+    const id = this._userConfig?.entity_schedule_enabled;
+    return !!(id && this._hass?.states?.[id]);
   }
+
+  /** Entity id for a role: explicit config wins, otherwise auto-detected. */
+  _ent(role) {
+    return this._userConfig?.[role] || this._resolved?.entities?.[role] || DEFAULTS[role] || null;
+  }
+
+  _deviceId() {
+    return this._userConfig?.device_id || this._resolved?.deviceId || null;
+  }
+
+  _resolve() {
+    const hass = this._hass;
+    if (!hass) return;
+    const key = hass.entities ?? hass.states;
+    if (this._resolvedKey === key && this._resolved) return;
+
+    // Candidate list: the entity registry when available (gives translation_key
+    // + device), otherwise just every state's entity_id.
+    let all;
+    if (hass.entities) {
+      all = Object.values(hass.entities).filter(e => e.platform === 'zaptec');
+    } else {
+      all = Object.keys(hass.states).map(entity_id => ({ entity_id }));
+    }
+
+    const cfg = this._userConfig || {};
+    const devices = hass.devices || {};
+    const entriesOf = id => devices[id]?.config_entries || [];
+
+    // Installation device: configured, or whichever device owns the available_current number.
+    let installation = cfg.device_id || null;
+    if (!installation) {
+      const avail = this._match(all, ENTITY_MATCHERS.entity_available_current);
+      installation = avail?.device_id || null;
+    }
+
+    // Scope charger entities to the configured charger, else to the same config entry as the installation.
+    let scoped = all;
+    if (cfg.charger_device_id) {
+      scoped = all.filter(e => e.device_id === cfg.charger_device_id || e.device_id === installation);
+    } else if (installation && entriesOf(installation).length) {
+      const entries = new Set(entriesOf(installation));
+      scoped = all.filter(e => !e.device_id || entriesOf(e.device_id).some(x => entries.has(x)));
+    }
+
+    const entities = {};
+    for (const [role, m] of Object.entries(ENTITY_MATCHERS)) {
+      const pool = m.scope === 'installation' && installation && hass.entities
+        ? scoped.filter(e => e.device_id === installation)
+        : scoped;
+      const hit = this._match(pool, m) || this._match(scoped, m);
+      if (hit) entities[role] = hit.entity_id;
+    }
+
+    const phases = PHASE_CURRENT_MATCHER.suffixes
+      .map((suffix, i) => this._match(scoped, {
+        ...PHASE_CURRENT_MATCHER,
+        keys: [PHASE_CURRENT_MATCHER.keys[i]],
+        suffixes: [suffix],
+      }))
+      .filter(Boolean)
+      .map(e => e.entity_id);
+
+    this._resolved    = { entities, phases, deviceId: installation };
+    this._resolvedKey = key;
+  }
+
+  _match(list, m) {
+    const ok = e => e.entity_id.startsWith(`${m.domain}.`)
+      && !(m.exclude || []).some(x => e.entity_id.includes(x));
+    return list.find(e => ok(e) && e.translation_key && m.keys.includes(e.translation_key))
+        || list.find(e => ok(e) && m.suffixes.some(s => e.entity_id.endsWith(s)))
+        || null;
+  }
+
+  /* ---------- schedule (built-in: one card-managed automation) ---------- */
+
+  _automationId() {
+    const raw = this._config.schedule_id || this._deviceId() || 'default';
+    return `${AUTOMATION_PREFIX}_${String(raw).toLowerCase().replace(/[^a-z0-9_]/g, '_')}`;
+  }
+
+  _scheduleAutomation() {
+    const id = this._automationId();
+    const states = this._hass?.states || {};
+    const entityId = Object.keys(states).find(k =>
+      k.startsWith('automation.') && states[k].attributes?.id === id);
+    return entityId ? { entityId, stateObj: states[entityId] } : null;
+  }
+
+  /** The time is kept in the automation's name, so every user can read it from its state. */
+  _automationTime(stateObj) {
+    const m = (stateObj?.attributes?.friendly_name || '').match(/(\d{1,2}:\d{2})\s*$/);
+    return m ? m[1].padStart(5, '0') : null;
+  }
+
+  _scheduleEnabled() {
+    if (this._isLegacy()) return this._isOn(this._config.entity_schedule_enabled);
+    return this._scheduleAutomation()?.stateObj?.state === 'on';
+  }
+
+  _scheduleTime() {
+    if (this._isLegacy()) {
+      const s = this._state(this._config.entity_schedule_time);
+      return s && s.length >= 5 ? s.slice(0, 5) : null;
+    }
+    return this._automationTime(this._scheduleAutomation()?.stateObj) || this._pendingTime || DEFAULT_SCHEDULE_TIME;
+  }
+
+  _buildAutomation(time) {
+    const mode       = this._ent('entity_charger_mode');
+    const authorized = this._ent('entity_authorized');
+    const authorize  = this._authorizeAction();
+
+    const triggers = [{ trigger: 'time', at: `${time}:00`, id: 'start' }];
+    // Unplugging cancels a pending scheduled start.
+    if (mode) triggers.push({ trigger: 'state', entity_id: mode, to: 'disconnected', id: 'unplugged' });
+
+    const authorizeIf = [];
+    if (mode)       authorizeIf.push({ condition: 'state', entity_id: mode, state: 'connected_requesting' });
+    if (authorized) authorizeIf.push({ condition: 'state', entity_id: authorized, state: 'off' });
+
+    const startSequence = [
+      { action: 'zaptec.limit_current', data: { device_id: this._deviceId(), available_current: Number(this._config.max_current) } },
+    ];
+    if (authorize) {
+      startSequence.push({ delay: { seconds: 2 } });
+      startSequence.push(authorizeIf.length ? { if: authorizeIf, then: [authorize] } : authorize);
+    }
+
+    return {
+      alias: `Zaptec Charger Card – scheduled start ${time}`,
+      description: 'Managed by zaptec-charger-card. Turned on/off and rewritten from the card — edits here will be overwritten. Runs once, then turns itself off.',
+      mode: 'single',
+      triggers,
+      conditions: [],
+      actions: [
+        { choose: [{ conditions: [{ condition: 'trigger', id: 'start' }], sequence: startSequence }] },
+        { action: 'automation.turn_off', target: { entity_id: '{{ this.entity_id }}' }, data: { stop_actions: false } },
+      ],
+    };
+  }
+
+  /** Create/update the schedule automation with `time`, then set it on/off. */
+  async _saveSchedule(time, enabled) {
+    const existing = this._scheduleAutomation();
+    const sameTime = existing && this._automationTime(existing.stateObj) === time;
+
+    if (!sameTime) {
+      if (!this._hass.user?.is_admin) throw new Error(this._t('schedule_admin_only'));
+      await this._hass.callApi('POST', `config/automation/config/${this._automationId()}`, this._buildAutomation(time));
+    }
+
+    // Wait for the (re)loaded automation to show up with the new time before
+    // switching it — otherwise the reload can restore the old on/off state.
+    const entityId = await this._waitFor(() => {
+      const a = this._scheduleAutomation();
+      return a && this._automationTime(a.stateObj) === time ? a.entityId : null;
+    });
+    if (!entityId) throw new Error('schedule automation did not appear');
+    await this._hass.callService('automation', enabled ? 'turn_on' : 'turn_off', {}, { entity_id: entityId });
+  }
+
+  async _waitFor(fn, timeoutMs = 10000) {
+    const until = Date.now() + timeoutMs;
+    for (;;) {
+      const v = fn();
+      if (v || Date.now() > until) return v;
+      await sleep(250);
+    }
+  }
+
+  async _disableSchedule() {
+    const a = this._scheduleAutomation();
+    if (a && a.stateObj.state === 'on') {
+      await this._hass.callService('automation', 'turn_off', {}, { entity_id: a.entityId });
+    }
+  }
+
+  /* ---------- actions ---------- */
+
+  async _guard(fn) {
+    if (this._busy || !this._hass) return;
+    this._busy = true;
+    this._update();
+    try {
+      await fn();
+    } catch (err) {
+      const message = this._t('action_failed', { error: err?.message || err?.body?.message || String(err) });
+      console.error('[zaptec-charger-card]', err);
+      this.dispatchEvent(new CustomEvent('hass-notification', { detail: { message }, bubbles: true, composed: true }));
+    } finally {
+      this._busy = false;
+      this._update();
+    }
+  }
+
+  _runScript(entityId) {
+    const objectId = entityId.split('.').slice(1).join('.');
+    return this._hass.callService('script', objectId, {});
+  }
+
+  _limitCurrent(amps) {
+    return this._hass.callService('zaptec', 'limit_current', {
+      device_id: this._deviceId(),
+      available_current: amps,
+    });
+  }
+
+  /** The service call that authorizes charging, as an automation action. */
+  _authorizeAction() {
+    const button = this._ent('entity_authorize_button');
+    if (button) return { action: 'button.press', target: { entity_id: button } };
+    if (this._config.charger_device_id) return { action: 'zaptec.authorize_charging', data: { device_id: this._config.charger_device_id } };
+    return null;
+  }
+
+  async _authorizeIfNeeded() {
+    const mode = this._state(this._ent('entity_charger_mode'));
+    if (mode !== 'connected_requesting') return;
+    const authorizedId = this._ent('entity_authorized');
+    if (authorizedId && this._isOn(authorizedId)) return;
+    const a = this._authorizeAction();
+    if (!a) return;
+    const [domain, service] = a.action.split('.');
+    await this._hass.callService(domain, service, a.data || {}, a.target);
+  }
+
+  async _startNow() {
+    if (this._isLegacy()) return this._config.script_start_now && this._runScript(this._config.script_start_now);
+    await this._disableSchedule();
+    await this._limitCurrent(Number(this._config.max_current));
+    await sleep(2000);
+    await this._authorizeIfNeeded();
+  }
+
+  async _scheduleStart() {
+    if (this._isLegacy()) return this._config.script_schedule && this._runScript(this._config.script_schedule);
+    // Hold at 0 A and authorize now; the automation raises the current at the scheduled time.
+    await this._limitCurrent(0);
+    await sleep(2000);
+    await this._authorizeIfNeeded();
+    await this._saveSchedule(this._scheduleTime(), true);
+  }
+
+  async _cancelSchedule() {
+    if (this._isLegacy()) return this._config.script_cancel_schedule && this._runScript(this._config.script_cancel_schedule);
+    await this._disableSchedule();
+  }
+
+  _stopCharging() {
+    return this._hass.callService('switch', 'turn_off', {}, { entity_id: this._ent('entity_charging_switch') });
+  }
+
+  async _toggleSchedule() {
+    if (this._isLegacy()) {
+      return this._hass.callService('input_boolean', 'toggle', {}, { entity_id: this._config.entity_schedule_enabled });
+    }
+    const a = this._scheduleAutomation();
+    if (a) return this._hass.callService('automation', 'toggle', {}, { entity_id: a.entityId });
+    await this._saveSchedule(this._scheduleTime(), true);
+  }
+
+  async _setScheduleTime(time) {
+    if (this._isLegacy()) {
+      return this._hass.callService('input_datetime', 'set_datetime', { time: `${time}:00` }, { entity_id: this._config.entity_schedule_time });
+    }
+    this._pendingTime = time;
+    // Saving creates the automation (switched off) if it doesn't exist yet, so the time persists.
+    await this._saveSchedule(time, this._scheduleEnabled());
+  }
+
+  /* ---------- rendering ---------- */
 
   _visualState(mode, scheduleEnabled) {
     if (mode === 'disconnected') return 'disconnected';
@@ -746,19 +1101,28 @@ class ZaptecChargerCard extends HTMLElement {
     $(`soc-${side}-name`).textContent  = cfg[`${side}_soc_name`] || '';
   }
 
+  _liveCurrent() {
+    const single = this._ent('entity_current');
+    if (single && this._hass.states[single]) return this._num(single);
+    const phases = (this._resolved?.phases || []).map(id => this._num(id)).filter(v => !isNaN(v));
+    return phases.length ? Math.max(...phases) : NaN;
+  }
+
   _update() {
     if (!this._built || !this._hass || !this._config) return;
+    this._resolve();
     const cfg = this._config;
     const $ = id => this.shadowRoot.getElementById(id);
+    const legacy = this._isLegacy();
 
-    const mode            = this._state(cfg.entity_charger_mode);
-    const scheduleEnabled = this._isOn(cfg.entity_schedule_enabled);
-    const price           = this._num(cfg.entity_price);
-    const charged         = this._num(cfg.entity_session_energy);
-    const power           = this._powerKw(cfg.entity_power);
-    const current         = this._num(cfg.entity_current);
-    const scheduleTime    = this._state(cfg.entity_schedule_time);
-    const shortTime       = scheduleTime && scheduleTime.length >= 5 ? scheduleTime.slice(0, 5) : '--:--';
+    const mode            = this._state(this._ent('entity_charger_mode'));
+    const scheduleEnabled = this._scheduleEnabled();
+    const price           = this._num(this._ent('entity_price'));
+    const charged         = this._num(this._ent('entity_session_energy'));
+    const power           = this._powerKw(this._ent('entity_power'));
+    const current         = this._liveCurrent();
+    const scheduleTime    = this._scheduleTime();
+    const shortTime       = scheduleTime || '--:--';
 
     const visual = this._visualState(mode, scheduleEnabled);
     const color  = STATE_COLORS[visual];
@@ -820,28 +1184,38 @@ class ZaptecChargerCard extends HTMLElement {
     if (disconnected) return;
 
     // Stats
-    const priceState = this._hass.states[cfg.entity_price];
+    const priceState = this._hass.states[this._ent('entity_price')];
     const priceUnit   = priceState?.attributes?.unit_of_measurement ?? '';
     $('stat-price').textContent   = isNaN(price) ? '—' : `${this._fmt(price, 2)}${priceUnit ? ' ' + priceUnit : ''}`;
     $('stat-power').textContent   = isNaN(power) ? '—' : `${this._fmt(power, 1)} kW`;
     $('stat-current').textContent = isNaN(current) ? '—' : `${this._fmt(current, 1)} A`;
     $('stat-energy').textContent  = isNaN(charged) ? '—' : `${this._fmt(charged, 1)} kWh`;
 
-    // Amp slider (don't fight the user mid-drag)
+    // Amp slider (don't fight the user mid-drag). Prefer the installation's
+    // available-current setting; fall back to the measured current.
     if (!this._sliderDirty) {
       const slider = $('amp-slider');
-      const limitNow = isNaN(current) ? cfg.max_current : Math.round(current);
-      if (document.activeElement !== slider) {
+      const avail = this._num(this._ent('entity_available_current'));
+      const basis = !isNaN(avail) ? avail : current;
+      const limitNow = isNaN(basis) ? cfg.max_current : Math.round(basis);
+      if (this.shadowRoot.activeElement !== slider) {
         slider.value = Math.min(cfg.max_current, Math.max(cfg.min_current, limitNow));
         $('amp-value').textContent = `${slider.value} A`;
       }
     }
 
-    // Schedule row
+    // Schedule row. Changing the time rewrites the automation, which needs an
+    // admin unless running on the v1 helpers.
+    const isAdmin   = this._hass.user ? !!this._hass.user.is_admin : true;
+    const canEdit   = legacy || isAdmin;
+    const automationExists = legacy || !!this._scheduleAutomation();
     const timeInput = $('schedule-time');
-    if (document.activeElement !== timeInput && scheduleTime) timeInput.value = shortTime;
+    if (this.shadowRoot.activeElement !== timeInput && scheduleTime) timeInput.value = shortTime;
+    timeInput.disabled = !canEdit || this._busy;
+    timeInput.title    = canEdit ? '' : this._t('schedule_admin_only');
     const toggle = $('schedule-toggle');
     toggle.classList.toggle('active', scheduleEnabled);
+    toggle.disabled = this._busy || (!canEdit && !automationExists);
     toggle.title = this._t(scheduleEnabled ? 'schedule_toggle_on' : 'schedule_toggle_off');
 
     // Buttons — mirrors the exact visibility rules from the original dashboard
@@ -854,10 +1228,12 @@ class ZaptecChargerCard extends HTMLElement {
     $('btn-schedule').classList.toggle('hidden', !showSchedule);
     $('btn-stop').classList.toggle('hidden', !showStop);
     $('btn-cancel').classList.toggle('hidden', !showCancel);
+    for (const id of ['btn-start', 'btn-schedule', 'btn-stop', 'btn-cancel']) $(id).disabled = this._busy;
+    $('btn-schedule').disabled = this._busy || (!canEdit && !automationExists);
   }
 
   _state(entityId) {
-    return this._hass?.states?.[entityId]?.state;
+    return entityId ? this._hass?.states?.[entityId]?.state : undefined;
   }
 
   _isOn(entityId) {

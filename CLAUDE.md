@@ -5,13 +5,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## What this project is
 
 A Home Assistant custom Lovelace card distributed via HACS (as a custom repository, not in the
-default store). It's a UI layer over an existing Zaptec Go 2 EV charger automation setup: it reads
-charger mode/price/power/current/energy sensors and calls the user's existing scripts and helpers
-for start/schedule/cancel — it does not own the scheduling logic itself. The scheduled start still
-relies on a server-side HA automation triggered by an `input_datetime` helper, since a browser-only
-card can't guarantee firing an action if no dashboard is open at the scheduled time. The amp-limit
-slider is the one control the card owns directly (`zaptec.limit_current`), since it's a live/manual
-adjustment rather than something that needs to survive the browser being closed.
+default store) for a Zaptec Go 2 EV charger. Since v2 it is self-contained: it auto-detects the Zaptec
+integration's entities, calls the Zaptec services directly for start/stop/amp limit, and owns the
+scheduled start through **one card-managed automation** that it writes via HA's automation config API
+(`POST config/automation/config/<id>`). The automation is needed because a browser-only card can't
+guarantee firing an action at the scheduled time if no dashboard is open.
+
+The v1 setup (3 helpers, 3 scripts, 3 automations) still works as **legacy mode**: active when
+`entity_schedule_enabled` is set in the user's config *and* that entity exists.
 
 GitHub: https://github.com/briis/zaptec_charger_card
 
@@ -39,11 +40,14 @@ npm start          # rollup --watch + serve on :3000 (run inside the container)
 ```
 
 Open http://localhost:3000/dev-preview.html to preview the card live. Controls let you fake: charger
-mode (disconnected / connected_requesting / connected_charging / connected_finished), the schedule
-toggle, price, power, current, session energy, the scheduled time, theme, and language. Every
-`hass.callService(...)` call the card makes is logged to the browser console and reflected back into
-the fake state, so you can click through the actual start/schedule/cancel/stop/slider flows without a
-real Home Assistant instance.
+mode, whether the schedule automation exists / is on / off, the Authorized sensor, admin vs non-admin
+user, price, power, per-phase current, session energy, theme, and language. The harness provides a fake
+`hass.entities`/`hass.devices` registry (one installation + one charger device in the same config
+entry) so auto-detection runs as on a real install. Every `hass.callService(...)` and
+`hass.callApi(...)` call is logged to the browser console and reflected back into the fake state
+(`callApi` creates the fake automation after a short delay, like HA's reload), so you can click through
+the start/schedule/cancel/stop/slider flows without a real Home Assistant instance.
+`window.__automations` holds the automation config the card wrote.
 
 `docker-compose.yml` is an alternative entry point (maps `3000:3000`), but normal dev happens via the
 VS Code devcontainer.
@@ -78,10 +82,11 @@ Key pieces:
 |---|---|
 | `TRANSLATIONS` | i18n strings for `da` and `en`; follows `hass.language`. Also contains `editor_*` keys used to translate field labels in the UI editor. |
 | `editorLabel(lang, name)` | Looks up an `editor_*` key from `TRANSLATIONS` for the given language; used by `computeLabel` in the editor. |
-| `DEFAULTS` | Default entity IDs, script entity IDs, `device_id`, and amp slider bounds — all matching a typical Zaptec HA integration setup. |
+| `DEFAULTS` | Default config. Entity roles default to `null` (= auto-detect); legacy helper/script keys default to `null`. |
+| `ENTITY_MATCHERS` / `PHASE_CURRENT_MATCHER` | How each entity role is found among `platform: zaptec` registry entries: `translation_key` first, then entity_id suffix, scoped to the charger or installation device. |
 | `STATE_COLORS` | Maps the 5 visual states to a color used by both the illustration LED and (implicitly) the status text. |
 | `STYLES` | Shadow DOM CSS (light/dark theme via HA CSS custom properties), including the SVG illustration's state-driven animations (`state-disconnected/charging/scheduled/ready/finished`). |
-| `ZaptecChargerCardEditor` | UI config editor — uses `ha-form` with `EDITOR_SCHEMA`. Field labels are translated automatically via `editorLabel`. |
+| `ZaptecChargerCardEditor` | UI config editor — uses `ha-form` with `editorSchema(lang)` (expandable sections for car tiles, entity overrides and legacy fields; cleared fields are dropped from the config so they fall back to auto-detect). Field labels are translated automatically via `editorLabel`. |
 | `ZaptecChargerCard` | The card itself; standard HA custom element API |
 
 ### HA card API surface
@@ -89,7 +94,7 @@ Key pieces:
 - `setConfig(config)` — merges with `DEFAULTS`, rebuilds DOM
 - `set hass(hass)` — updates state display
 - `getConfigElement()` — returns the `ha-form`-based editor element
-- `getStubConfig()` — default config shown when card is added via UI
+- `getStubConfig()` — `{}`; nothing needs filling in
 - `getLayoutOptions()` — declares preferred grid size (6 col, min 4×6, max 12 col)
 - `getCardSize()` — returns `6`
 
@@ -109,15 +114,47 @@ the original dashboard's conditional cards (see the table in `README.md`) — in
 Start now and Schedule start can both show simultaneously in the `finished` state, since that's what
 the original YAML did.
 
-### Actions → services
+### Entity resolution
+
+`_resolve()` runs on every `hass` update but is cached on the identity of `hass.entities`. It finds
+the installation device (configured `device_id`, else the device owning the `*_available_current`
+number), scopes candidates to the configured `charger_device_id` or else to the installation's config
+entry, and matches each role. `_ent(role)` returns explicit config first, then the detected entity.
+Without `hass.entities` (old frontends) it falls back to suffix matching over `hass.states`. Note the
+installation also has `sensor.*_available_current_phase_N` — `PHASE_CURRENT_MATCHER.exclude` keeps
+those out of the live-current calculation.
+
+### Schedule automation
+
+- id `zaptec_charger_card_schedule_<schedule_id || installation device id>`; found in `hass.states`
+  by `attributes.id`.
+- The time lives in the alias (`… scheduled start HH:MM`) so non-admins can read it from the entity's
+  `friendly_name` — `config/automation/config` reads need admin.
+- Its on/off state is the "schedule enabled" state.
+- On fire: `limit_current` → max, authorize if needed, then `automation.turn_off` on itself with
+  `stop_actions: false` (the default `true` would abort its own run). A second trigger (charger mode →
+  `disconnected`) just turns it off.
+- `_saveSchedule(time, enabled)` skips the write when the time is unchanged (so non-admins can still
+  toggle), otherwise POSTs, then **waits until the reloaded entity shows the new time** before
+  `turn_on`/`turn_off` — the reload is async and would otherwise restore the old state.
+- Writing needs admin; the time input is disabled for non-admins.
+
+### Actions → services (built-in mode)
 
 | Action | Service call |
 |---|---|
-| Start now / Schedule start / Cancel schedule buttons | `script.<object_id>` (derived from the configured `script_*` entity ID) — equivalent to how the original dashboard invoked scripts as their own service |
-| Stop charging | `switch.turn_off` targeting `entity_charging_switch` |
-| Schedule toggle button | `input_boolean.toggle` targeting `entity_schedule_enabled` |
-| Time picker | `input_datetime.set_datetime` targeting `entity_schedule_time` |
-| Amp slider | `zaptec.limit_current` with `device_id` + `available_current`, fired on `change` (not `input`) to avoid spamming calls while dragging |
+| Start now | turn schedule automation off → `zaptec.limit_current` (max) → 2 s → `button.press` authorize if mode is `connected_requesting` and *Authorized* is off |
+| Schedule start | `zaptec.limit_current` (0) → 2 s → authorize (same rule) → `_saveSchedule(time, true)` |
+| Cancel schedule | `automation.turn_off` |
+| Stop charging | `switch.turn_off` on the charging switch |
+| Schedule toggle | `automation.toggle` (or create+enable if missing) |
+| Time picker | `_saveSchedule(time, currentEnabled)` |
+| Amp slider | `zaptec.limit_current` with `device_id` + `available_current`, fired on `change` (not `input`) |
+
+In legacy mode the buttons call the configured `script.*`, the toggle `input_boolean.toggle` and the
+time picker `input_datetime.set_datetime`, exactly as v1. All actions go through `_guard()`, which
+blocks double taps (buttons disabled while busy) and shows failures as an HA toast
+(`hass-notification`).
 
 ### Illustration
 

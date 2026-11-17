@@ -117,8 +117,22 @@
     </label>
 
     <label>
-      Schedule enabled
-      <input type="checkbox" id="scheduleEnabled" />
+      Schedule automation
+      <select id="automationSelect">
+        <option value="none" selected>doesn't exist</option>
+        <option value="off">off</option>
+        <option value="on">on</option>
+      </select>
+    </label>
+
+    <label>
+      Authorized
+      <input type="checkbox" id="authorizedInput" />
+    </label>
+
+    <label>
+      Admin user
+      <input type="checkbox" id="adminInput" checked />
     </label>
 
     <label>
@@ -132,18 +146,13 @@
     </label>
 
     <label>
-      Current (A)
+      Current per phase (A)
       <input type="number" id="currentInput" value="16" step="1" />
     </label>
 
     <label>
       Session energy (kWh)
       <input type="number" id="energyInput" value="12.4" step="0.1" />
-    </label>
-
-    <label>
-      Schedule time
-      <input type="time" id="scheduleTimeInput" value="23:00" step="60" />
     </label>
 
     <label>
@@ -209,117 +218,178 @@
 
   <script>
     const card = document.querySelector('zaptec-charger-card');
+    const $ = id => document.getElementById(id);
 
-    const CONFIG = {}; // rely entirely on the card's own defaults
+    const CONFIG = {}; // rely entirely on auto-detection, like a fresh install
 
-    let serviceLog = [];
-    function callService(domain, service, data, target) {
-      const entry = { domain, service, data, target, at: new Date().toISOString() };
-      serviceLog.push(entry);
-      console.log('[hass.callService]', domain + '.' + service, { data, target });
+    // Fake registry mirroring a real Zaptec install: one installation device
+    // and one charger device in the same config entry.
+    const INSTALLATION = 'dev_installation_device';
+    const CHARGER      = 'dev_charger_device';
+    const ENTRY        = 'dev_zaptec_entry';
+    const ZAPTEC_ENTITIES = {
+      'sensor.ev_ev_charger_charger_mode':                 CHARGER,
+      'switch.ev_ev_charger_charging':                     CHARGER,
+      'button.ev_ev_charger_authorize_charging':           CHARGER,
+      'button.ev_ev_charger_deauthorize_charging':         CHARGER,
+      'binary_sensor.ev_ev_charger_authorized_power':      CHARGER,
+      'sensor.ev_ev_charger_session_total_charge':         CHARGER,
+      'sensor.ev_ev_charger_charge_power':                 CHARGER,
+      'sensor.ev_ev_charger_current_phase_1':              CHARGER,
+      'sensor.ev_ev_charger_current_phase_2':              CHARGER,
+      'sensor.ev_ev_charger_current_phase_3':              CHARGER,
+      'number.ev_installation_available_current':          INSTALLATION,
+      'sensor.ev_installation_available_current_phase_1':  INSTALLATION,
+    };
 
-      // Reflect the effect of the call back into fake state, like a real HA would.
-      if (domain === 'input_boolean' && service === 'toggle') {
-        state.scheduleEnabled = !state.scheduleEnabled;
-        document.getElementById('scheduleEnabled').checked = state.scheduleEnabled;
-      }
-      if (domain === 'input_datetime' && service === 'set_datetime') {
-        document.getElementById('scheduleTimeInput').value = data.time.slice(0, 5);
-      }
-      if (domain === 'switch' && service === 'turn_off') {
-        document.getElementById('modeSelect').value = 'connected_finished';
-      }
-      if (domain === 'script') {
-        // start_now / schedule / cancel_schedule all resolve to plausible mode transitions
-        if (service.includes('cancel')) {
-          state.scheduleEnabled = false;
-          document.getElementById('scheduleEnabled').checked = false;
-        } else if (service.includes('schedule')) {
-          state.scheduleEnabled = true;
-          document.getElementById('scheduleEnabled').checked = true;
-        } else if (service.includes('start')) {
-          document.getElementById('modeSelect').value = 'connected_charging';
-        }
-      }
-      if (domain === 'zaptec' && service === 'limit_current') {
-        document.getElementById('currentInput').value = data.available_current;
-      }
-      pushUpdate();
+    // Fake automation store, as written by POST config/automation/config/<id>
+    const automations = {}; // id -> { config, entityId, state }
+    let availableCurrent = 16;
+
+    function slug(s) { return s.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, ''); }
+
+    async function callApi(method, path, body) {
+      console.log('[hass.callApi]', method, path, body);
+      const id = path.split('/').pop();
+      const existing = automations[id];
+      // Mimic HA: reload happens shortly after the write, entity_id from the first alias.
+      setTimeout(() => {
+        automations[id] = {
+          config: body,
+          entityId: existing?.entityId || `automation.${slug(body.alias)}`,
+          state: existing?.state || 'on',
+        };
+        $('automationSelect').value = automations[id].state;
+        pushUpdate();
+      }, 300);
+      return {};
     }
 
-    const state = { scheduleEnabled: false };
+    function onlyAutomation() { return Object.values(automations)[0]; }
+
+    function callService(domain, service, data, target) {
+      console.log('[hass.callService]', domain + '.' + service, { data, target });
+
+      if (domain === 'automation') {
+        const a = Object.values(automations).find(x => x.entityId === target.entity_id);
+        if (a) {
+          a.state = service === 'toggle' ? (a.state === 'on' ? 'off' : 'on') : (service === 'turn_on' ? 'on' : 'off');
+          $('automationSelect').value = a.state;
+        }
+      }
+      if (domain === 'button' && service === 'press' && target.entity_id.endsWith('_authorize_charging')) {
+        $('authorizedInput').checked = true;
+        if (availableCurrent > 0) $('modeSelect').value = 'connected_charging';
+      }
+      if (domain === 'switch' && service === 'turn_off') {
+        $('modeSelect').value = 'connected_finished';
+      }
+      if (domain === 'zaptec' && service === 'limit_current') {
+        availableCurrent = data.available_current;
+        $('currentInput').value = data.available_current;
+        if (availableCurrent > 0 && $('authorizedInput').checked) $('modeSelect').value = 'connected_charging';
+      }
+      pushUpdate();
+      return Promise.resolve();
+    }
 
     function buildConfig() {
-      const leftOn  = document.getElementById('leftSocEnabled').checked;
-      const rightOn = document.getElementById('rightSocEnabled').checked;
+      const leftOn  = $('leftSocEnabled').checked;
+      const rightOn = $('rightSocEnabled').checked;
       return {
         ...CONFIG,
         left_soc_entity:  leftOn ? 'sensor.left_car_state_of_charge' : null,
-        left_soc_name:    document.getElementById('leftSocName').value,
-        left_soc_color:   document.getElementById('leftSocColor').value,
-        left_soc_image:   document.getElementById('leftSocImage').value || null,
+        left_soc_name:    $('leftSocName').value,
+        left_soc_color:   $('leftSocColor').value,
+        left_soc_image:   $('leftSocImage').value || null,
         right_soc_entity: rightOn ? 'sensor.right_car_state_of_charge' : null,
-        right_soc_name:   document.getElementById('rightSocName').value,
-        right_soc_color:  document.getElementById('rightSocColor').value,
-        right_soc_image:  document.getElementById('rightSocImage').value || null,
+        right_soc_name:   $('rightSocName').value,
+        right_soc_color:  $('rightSocColor').value,
+        right_soc_image:  $('rightSocImage').value || null,
       };
     }
 
+    // Registry objects keep their identity across updates, like the real frontend.
+    const ENTITY_REGISTRY = Object.fromEntries(Object.entries(ZAPTEC_ENTITIES).map(([entity_id, device_id]) =>
+      [entity_id, { entity_id, device_id, platform: 'zaptec' }]));
+    const DEVICE_REGISTRY = {
+      [INSTALLATION]: { id: INSTALLATION, config_entries: [ENTRY] },
+      [CHARGER]:      { id: CHARGER, config_entries: [ENTRY] },
+    };
+
     function makeHass() {
       const now = new Date().toISOString();
-      const mkState = (state_, unit) => ({
+      const mkState = (state_, unit, extra = {}) => ({
         state: String(state_),
-        attributes: { unit_of_measurement: unit },
+        attributes: { unit_of_measurement: unit, ...extra },
         last_changed: now,
         last_updated: now,
       });
 
-      const mode           = document.getElementById('modeSelect').value;
-      const scheduleOn     = document.getElementById('scheduleEnabled').checked;
-      const price          = document.getElementById('priceInput').value;
-      const power          = document.getElementById('powerInput').value;
-      const current        = document.getElementById('currentInput').value;
-      const energy         = document.getElementById('energyInput').value;
-      const scheduleTime   = document.getElementById('scheduleTimeInput').value || '23:00';
-      const lang           = document.getElementById('langSelect').value;
-      const leftSoc        = document.getElementById('leftSocValue').value;
-      const rightSoc       = document.getElementById('rightSocValue').value;
+      const mode    = $('modeSelect').value;
+      const current = $('currentInput').value;
+      const autoSel = $('automationSelect').value;
+
+      // The toolbar can force the automation state (incl. deleting it).
+      if (autoSel === 'none') for (const k of Object.keys(automations)) delete automations[k];
+      else if (onlyAutomation()) onlyAutomation().state = autoSel;
+
+      const states = {
+        'sensor.ev_ev_charger_charger_mode':            mkState(mode),
+        'switch.ev_ev_charger_charging':                mkState(mode === 'connected_charging' ? 'on' : 'off'),
+        'button.ev_ev_charger_authorize_charging':      mkState('unknown'),
+        'binary_sensor.ev_ev_charger_authorized_power': mkState($('authorizedInput').checked ? 'on' : 'off'),
+        'sensor.stromligning_current_price_vat':        mkState($('priceInput').value, 'kr/kWh'),
+        'sensor.ev_ev_charger_session_total_charge':    mkState($('energyInput').value, 'kWh'),
+        'sensor.ev_ev_charger_charge_power':            mkState($('powerInput').value, 'W'),
+        'sensor.ev_ev_charger_current_phase_1':         mkState(current, 'A'),
+        'sensor.ev_ev_charger_current_phase_2':         mkState(current, 'A'),
+        'sensor.ev_ev_charger_current_phase_3':         mkState(current, 'A'),
+        'number.ev_installation_available_current':     mkState(availableCurrent, 'A'),
+        'sensor.ev_installation_available_current_phase_1': mkState(99, 'A'), // must NOT be picked as live current
+        'sensor.left_car_state_of_charge':              mkState($('leftSocValue').value, '%'),
+        'sensor.right_car_state_of_charge':             mkState($('rightSocValue').value, '%'),
+      };
+      for (const [id, a] of Object.entries(automations)) {
+        states[a.entityId] = mkState(a.state, undefined, { id, friendly_name: a.config.alias });
+      }
 
       return {
-        language: lang,
-        states: {
-          'sensor.ev_ev_charger_charger_mode':        mkState(mode),
-          'input_boolean.zaptec_scheduled_charge_enabled': mkState(scheduleOn ? 'on' : 'off'),
-          'input_datetime.zaptec_scheduled_start_time': mkState(`${scheduleTime}:00`),
-          'sensor.stromligning_current_price_vat':    mkState(price, 'kr/kWh'),
-          'sensor.ev_ev_charger_session_total_charge': mkState(energy, 'kWh'),
-          'sensor.ev_ev_charger_charger_power':       mkState(power, 'W'),
-          'sensor.ev_ev_charger_charger_current':     mkState(current, 'A'),
-          'sensor.left_car_state_of_charge':          mkState(leftSoc, '%'),
-          'sensor.right_car_state_of_charge':         mkState(rightSoc, '%'),
-        },
+        language: $('langSelect').value,
+        user: { is_admin: $('adminInput').checked },
+        states,
+        entities: ENTITY_REGISTRY,
+        devices: DEVICE_REGISTRY,
         callService,
+        callApi,
       };
     }
 
+    let lastConfigKey = null;
     function pushUpdate() {
-      try { card.setConfig(buildConfig()); } catch (_) {}
+      const cfg = buildConfig();
+      const key = JSON.stringify(cfg);
+      if (key !== lastConfigKey) {
+        lastConfigKey = key;
+        try { card.setConfig(cfg); } catch (_) {}
+      }
       card.hass = makeHass();
     }
+    window.__automations = automations; // for poking at from the console
 
     customElements.whenDefined('zaptec-charger-card').then(() => pushUpdate());
 
     [
-      'modeSelect', 'scheduleEnabled', 'priceInput', 'powerInput',
-      'currentInput', 'energyInput', 'scheduleTimeInput', 'langSelect',
+      'modeSelect', 'automationSelect', 'authorizedInput', 'adminInput', 'priceInput', 'powerInput',
+      'currentInput', 'energyInput', 'langSelect',
       'leftSocEnabled', 'leftSocValue', 'leftSocName', 'leftSocColor', 'leftSocImage',
       'rightSocEnabled', 'rightSocValue', 'rightSocName', 'rightSocColor', 'rightSocImage',
     ].forEach(id => {
-      document.getElementById(id).addEventListener('input', pushUpdate);
-      document.getElementById(id).addEventListener('change', pushUpdate);
+      $(id).addEventListener('input', pushUpdate);
+      $(id).addEventListener('change', pushUpdate);
     });
 
-    document.getElementById('themeSelect').addEventListener('change', e => {
+    $('themeSelect').addEventListener('change', e => {
       document.body.className = e.target.value;
     });
   </script>
