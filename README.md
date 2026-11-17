@@ -13,14 +13,16 @@ A custom [Home Assistant](https://www.home-assistant.io/) Lovelace card for mana
 - Live stats: price, power (kW), current (A), and session energy charged (kWh)
 - Amp-limit slider that calls `zaptec.limit_current` directly
 - Start now / schedule start / cancel schedule / stop charging actions
-- Time picker + toggle for the scheduled start time
+- Scheduled start that fires server-side, even when no dashboard is open — usable by every HA user
+- **Zero setup**: finds the Zaptec entities by itself; no helpers, scripts or automations to create
 - Adapts to Home Assistant light and dark themes
 - Supports **Danish** and **English** (follows the HA language setting)
 
-Since v2 the card is **self-contained**: no helpers, scripts or automations to create. It finds the
-Zaptec integration's entities by itself, calls the Zaptec services directly, and keeps the scheduled
-start in **one automation that the card creates and manages for you** — so the scheduled start still
-fires server-side, even when no browser has the dashboard open. See [How it works](#how-it-works).
+Since v2 the card is **self-contained**: there are no helpers, scripts or automations for you to
+create. It finds the Zaptec integration's entities by itself, calls the Zaptec services directly, and
+sets up its own time helper and automation for the scheduled start the first time an admin uses it —
+see [Setup](#setup-first-run). Coming from v1? See [Upgrading from v1](#upgrading-from-v1-helpers--scripts).
+For what changed between versions, see the [changelog](CHANGELOG.md).
 
 ---
 
@@ -64,70 +66,11 @@ fires server-side, even when no browser has the dashboard open. See [How it work
 
 ## Requirements
 
-Just the [Zaptec HA integration](https://github.com/custom-components/zaptec). That's it — no helpers,
-scripts or automations to create yourself.
-
-Optional: an electricity price sensor for the price stat (defaults to
-`sensor.stromligning_current_price_vat`).
-
-The **first time** the schedule is used (picking a time, *Schedule start*, or the schedule toggle) you
-need to be logged in as an HA **administrator**: that's when the card creates its time helper and its
-automation. After that **every user** can use the schedule fully — change the time, schedule, cancel
-and toggle. Start/stop charging and the amp slider never need admin.
-
----
-
-## How it works
-
-**Entity auto-detection.** The card looks up the Zaptec integration's entities in the entity registry
-(charger mode, charging switch, authorize button, *Authorized* sensor, session energy, charge power,
-phase currents, and the installation's *Available current*). The installation device used for
-`zaptec.limit_current` is detected the same way. Every entity can still be overridden in the visual
-editor under *Entities* — useful if you have more than one charger (pick the charger device too).
-
-**Buttons.**
-
-| Action                  | What the card does                                                                                                                        |
-| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| Start now               | Turns off a pending schedule, `zaptec.limit_current` → max current, waits 2 s, presses *Authorize charging* if the charger is waiting for authorization and isn't authorized yet |
-| Schedule start          | `zaptec.limit_current` → 0 A, waits 2 s, authorizes (same rule), then turns the schedule automation on                                  |
-| Cancel scheduled start  | Turns the schedule automation off                                                                                                         |
-| Stop charging           | `switch.turn_off` on the charging switch                                                                                                  |
-| Schedule toggle         | Turns the schedule automation on/off                                                                                                      |
-| Time picker             | `input_datetime.set_datetime` on the card's time helper                                                                                  |
-| Amp slider              | `zaptec.limit_current` with the selected current                                                                                         |
-
-**The schedule: one helper + one automation, created by the card.** The first time an admin uses the
-schedule, the card creates:
-
-- a time helper, **Zaptec Charger Card schedule time** (`input_datetime`, time only) — this holds the
-  scheduled time, so changing it is an ordinary helper update anyone can make;
-- an automation, **Zaptec Charger Card – scheduled start** (id
-  `zaptec_charger_card_schedule_<installation device id>`), triggered at the helper's time.
-
-Both show up in Settings like any other helper/automation. The automation's on/off state *is* the
-card's "schedule active" state. When it fires it sets the current to max (and authorizes if needed),
-then switches itself off — so it runs once. Unplugging the car also switches it off.
-
-Don't edit the automation by hand: when an admin opens the card and the card's settings (max current,
-entities, device) no longer match it, the card rewrites it. Don't rename the helper either — the card
-finds it by name. If you have two cards for the same charger and want separate schedules, set a
-different `schedule_id` on each (each gets its own helper and automation).
-
----
-
-## Upgrading from v1 (helpers & scripts)
-
-If your card config has `entity_schedule_enabled` pointing at an existing helper, the card keeps running
-**exactly as in v1** (legacy mode), calling your scripts and helpers. To switch to the built-in logic:
-
-1. Open the card editor, expand *Legacy helpers & scripts* and clear every field there
-   (or delete the `entity_is_authorized`, `entity_schedule_enabled`, `entity_schedule_time`,
-   `entity_deauthorize_button` and `script_*` lines from the card YAML).
-2. Optionally clear the *Entities* section too, to let the card auto-detect them.
-3. As an admin, pick your scheduled time once in the card — this creates the time helper and the
-   schedule automation.
-4. When you're happy, delete the old helpers, the three scripts and the three automations.
+- Home Assistant with the [Zaptec integration](https://github.com/custom-components/zaptec) set up.
+- An HA **administrator** account for the one-time setup of the schedule (see [Setup](#setup-first-run)).
+  Everyday use works for every user.
+- Optional: an electricity price sensor for the price stat (defaults to
+  `sensor.stromligning_current_price_vat`; pick another one in the card editor).
 
 ---
 
@@ -151,6 +94,45 @@ If your card config has `entity_schedule_enabled` pointing at an existing helper
    Type: JavaScript module
    ```
 4. Reload your browser.
+
+---
+
+## Setup (first run)
+
+1. **Add the card.** Edit a dashboard → **Add card** → *Zaptec Go 2 Charger Card*. Leave everything
+   as it is: the card finds your charger, its entities and the Zaptec installation device itself.
+   You can now start/stop charging and use the amp slider.
+2. **Set up the schedule — once, as an administrator.** Log in to Home Assistant with an admin account,
+   connect the car, then do *one* of these in the card:
+   - pick a time in the time picker, or
+   - tap **Schedule start**, or
+   - tap the clock (schedule) button.
+
+   The card now creates two things, which you'll find under **Settings**:
+
+   | What                                                      | Where                                   | Purpose                              |
+   | --------------------------------------------------------- | --------------------------------------- | ------------------------------------ |
+   | Time helper **Zaptec Charger Card schedule time**         | Settings → Devices & services → Helpers | Holds the scheduled start time       |
+   | Automation **Zaptec Charger Card – scheduled start**      | Settings → Automations & scenes         | Starts charging at that time         |
+
+   If you picked a time, the schedule is created switched **off**; with *Schedule start* or the clock
+   button it's switched **on** right away.
+3. **Done — everyone can use it now.** From here on, all users (admin or not) can change the time,
+   schedule, cancel and toggle the schedule from the card.
+
+Until step 2 has been done, non-admin users see the time picker, the clock button and *Schedule start*
+greyed out, with the tooltip *"The schedule has to be set up once by an administrator"*.
+
+**Good to know**
+
+- Don't rename the time helper — the card finds it by its name. Don't edit the automation either: when
+  an admin opens the card and the card's settings (e.g. *Maximum current*) no longer match it, the card
+  rewrites it automatically.
+- If you change *Maximum current* in the card editor, open the dashboard once as an admin afterwards
+  so the automation is updated to the new value.
+- Deleted the helper or the automation by accident? Do step 2 again — the card recreates what's missing.
+- Removing the card from your dashboard doesn't remove the helper and the automation; delete them in
+  Settings if you no longer need them.
 
 ---
 
@@ -203,6 +185,44 @@ left_soc_name: GLB
 
 ---
 
+## How it works
+
+**Entity auto-detection.** The card looks up the Zaptec integration's entities in the entity registry
+(charger mode, charging switch, authorize button, *Authorized* sensor, session energy, charge power,
+phase currents, and the installation's *Available current*). The installation device used for
+`zaptec.limit_current` is detected the same way. Every entity can still be overridden in the visual
+editor under *Entities* — useful if you have more than one charger (pick the charger device too).
+
+**Buttons.**
+
+| Action                  | What the card does                                                                                                                        |
+| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| Start now               | Turns off a pending schedule, `zaptec.limit_current` → max current, waits 2 s, presses *Authorize charging* if the charger is waiting for authorization and isn't authorized yet |
+| Schedule start          | `zaptec.limit_current` → 0 A, waits 2 s, authorizes (same rule), then turns the schedule automation on                                  |
+| Cancel scheduled start  | Turns the schedule automation off                                                                                                         |
+| Stop charging           | `switch.turn_off` on the charging switch                                                                                                  |
+| Schedule toggle         | Turns the schedule automation on/off                                                                                                      |
+| Time picker             | `input_datetime.set_datetime` on the card's time helper                                                                                  |
+| Amp slider              | `zaptec.limit_current` with the selected current                                                                                         |
+
+**The schedule: one helper + one automation, created by the card.** The first time an admin uses the
+schedule, the card creates:
+
+- a time helper, **Zaptec Charger Card schedule time** (`input_datetime`, time only) — this holds the
+  scheduled time, so changing it is an ordinary helper update anyone can make;
+- an automation, **Zaptec Charger Card – scheduled start** (id
+  `zaptec_charger_card_schedule_<installation device id>`), triggered at the helper's time.
+
+Both show up in Settings like any other helper/automation. The automation's on/off state *is* the
+card's "schedule active" state. When it fires it sets the current to max (and authorizes if needed),
+then switches itself off — so it runs once. Unplugging the car also switches it off.
+
+See [Setup → Good to know](#setup-first-run) for what not to touch. If you have two cards for the
+same charger and want separate schedules, set a different `schedule_id` on each (each gets its own
+helper and automation).
+
+---
+
 ## Button visibility rules
 
 The action buttons follow the same precedence as a typical hand-built Zaptec dashboard:
@@ -223,6 +243,40 @@ The action buttons follow the same precedence as a typical hand-built Zaptec das
 | Default columns | 6     |
 | Minimum         | 4 × 6 |
 | Maximum columns | 12    |
+
+---
+
+## Upgrading from v1 (helpers & scripts)
+
+Nothing breaks when you update: if your card config has `entity_schedule_enabled` pointing at an
+existing helper, the card keeps running **exactly as in v1** (legacy mode), calling your scripts and
+helpers. Switch to the built-in logic when it suits you:
+
+1. Open the card editor, expand *Legacy helpers & scripts* and clear every field there
+   (or delete the `entity_is_authorized`, `entity_schedule_enabled`, `entity_schedule_time`,
+   `entity_deauthorize_button` and `script_*` lines from the card YAML).
+2. Optionally clear the *Entities* section too, so the card auto-detects them. Keep `device_id` if you
+   had it — or clear it and let the card find the installation device.
+3. Save, then do the [first-run setup](#setup-first-run) (step 2) as an administrator.
+4. Check that the new schedule works, then delete the old v1 pieces: the helpers
+   `input_boolean.zaptec_is_authorized`, `input_boolean.zaptec_scheduled_charge_enabled` and
+   `input_datetime.zaptec_scheduled_start_time`, the three `script.zaptec_*` scripts, and the three
+   Zaptec automations (authorized reset, schedule-off-when-finished, scheduled start).
+
+> **Note:** v1's default config pointed at a specific Zaptec device id. v2 has no such default — if
+> your card YAML has no `device_id`, the card now detects it instead.
+
+---
+
+## Troubleshooting
+
+| Symptom                                                                 | What to do                                                                                                                                              |
+| ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Schedule controls are greyed out                                        | The schedule hasn't been set up yet — do [step 2 of Setup](#setup-first-run) as an administrator.                                                       |
+| Toast *"Zaptec card: action failed (...)"*                              | The service call or the automation write failed; the text in brackets is Home Assistant's error. Check **Settings → System → Logs**.                    |
+| A stat shows `—`                                                         | The card couldn't find that entity. Open the card editor → *Entities* and pick it manually.                                                            |
+| More than one Zaptec charger                                            | Pick the *Zaptec charger* (and if needed the *Zaptec installation*) device in the card editor. Give each card its own `schedule_id` for separate schedules. |
+| The card still calls my old scripts                                     | It's in legacy (v1) mode — see [Upgrading from v1](#upgrading-from-v1-helpers--scripts).                                                               |
 
 ---
 
