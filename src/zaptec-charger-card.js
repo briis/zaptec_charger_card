@@ -57,6 +57,8 @@ const TRANSLATIONS = {
     editor_min_current:              'Minimum current (A)',
     editor_max_current:              'Maximum current (A)',
     editor_title:                    'Card title',
+    editor_charger_icon:             'Charger icon (optional, replaces the built-in drawing)',
+    editor_charger_image:            'Charger image URL (optional, overrides the icon)',
     editor_left_soc_entity:          'Left car battery sensor (optional)',
     editor_left_soc_name:            'Left car name',
     editor_left_soc_icon:            'Left car icon',
@@ -125,6 +127,8 @@ const TRANSLATIONS = {
     editor_min_current:              'Minimum current (A)',
     editor_max_current:              'Maximum current (A)',
     editor_title:                    'Card title',
+    editor_charger_icon:             'Charger icon (optional, replaces the built-in drawing)',
+    editor_charger_image:            'Charger image URL (optional, overrides the icon)',
     editor_left_soc_entity:          'Left car battery sensor (optional)',
     editor_left_soc_name:            'Left car name',
     editor_left_soc_icon:            'Left car icon',
@@ -180,6 +184,8 @@ const DEFAULTS = {
   min_current:               6,
   max_current:               16,
   title:                     null,
+  charger_icon:              null,  // e.g. mdi:ev-station — replaces the built-in SVG
+  charger_image:             null,  // e.g. /local/charger.png — overrides charger_icon
   left_soc_entity:           null,
   left_soc_name:             '',
   left_soc_icon:             'mdi:car-electric',
@@ -273,6 +279,7 @@ const STYLES = `
      illustration into column 1 instead of leaving it centered. */
   #soc-left      { grid-column: 1; }
   .illustration  { grid-column: 2; }
+  .charger-alt   { grid-column: 2; }
   #soc-right     { grid-column: 3; }
   .soc-tile ha-icon { --mdc-icon-size: 40px; }
   .soc-tile .soc-image {
@@ -324,6 +331,31 @@ const STYLES = `
 
   .illustration.state-finished .zc-led-outer { stroke-width: 6; }
 
+  /* Custom charger icon / image: same state colour + animation language as the SVG. */
+  .charger-alt {
+    width: 96px;
+    height: 130px;
+    --zc-color: #8a8f98;
+    transition: opacity 0.6s ease, filter 0.6s ease;
+  }
+  ha-icon.charger-alt {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    --mdc-icon-size: 88px;
+    color: var(--zc-color);
+  }
+  img.charger-alt { object-fit: contain; }
+  .charger-alt.state-disconnected { opacity: 0.45; filter: grayscale(1); }
+  .charger-alt.state-charging     { animation: zc-glow 1.6s ease-in-out infinite; }
+  .charger-alt.state-scheduled    { animation: zc-breathe 2.6s ease-in-out infinite; filter: drop-shadow(0 0 4px var(--zc-color)); }
+  .charger-alt.state-ready        { animation: zc-breathe 3.4s ease-in-out infinite; filter: drop-shadow(0 0 4px var(--zc-color)); }
+  .charger-alt.state-finished     { filter: drop-shadow(0 0 6px var(--zc-color)); }
+
+  @keyframes zc-glow {
+    0%, 100% { filter: drop-shadow(0 0 2px var(--zc-color)); }
+    50%      { filter: drop-shadow(0 0 12px var(--zc-color)); }
+  }
   @keyframes zc-pulse {
     0%, 100% { stroke-width: 5; filter: drop-shadow(0 0 2px currentColor); }
     50%      { stroke-width: 8; filter: drop-shadow(0 0 8px currentColor); }
@@ -488,6 +520,8 @@ function editorSchema(lang) {
     { name: 'min_current', required: false, selector: { number: { min: 0, max: 32, step: 1, mode: 'box', unit_of_measurement: 'A' } } },
     { name: 'max_current', required: false, selector: { number: { min: 1, max: 32, step: 1, mode: 'box', unit_of_measurement: 'A' } } },
     { name: 'title', required: false, selector: { text: {} } },
+    { name: 'charger_icon',  required: false, selector: { icon: {} } },
+    { name: 'charger_image', required: false, selector: { text: {} } },
     {
       type: 'expandable', name: '', flatten: true, title: editorLabel(lang, 'section_cars'),
       schema: [
@@ -671,6 +705,8 @@ class ZaptecChargerCard extends HTMLElement {
               <circle cx="122" cy="220" r="2"/>
             </g>
           </svg>
+          <ha-icon class="charger-alt hidden" id="charger-icon"></ha-icon>
+          <img class="charger-alt hidden" id="charger-image" alt="" />
 
           <div class="soc-tile" id="soc-right">
             <ha-icon id="soc-right-icon"></ha-icon>
@@ -1146,8 +1182,20 @@ class ZaptecChargerCard extends HTMLElement {
     $('lbl-cancel-desc').textContent    = this._t('cancel_schedule_desc');
 
     // Illustration
+    // Charger visual: custom image > custom icon > built-in SVG.
+    const chargerImage = cfg.charger_image || null;
+    const chargerIcon  = !chargerImage && cfg.charger_icon ? cfg.charger_icon : null;
+    const altImage = $('charger-image');
+    const altIcon  = $('charger-icon');
+    for (const [el, on] of [[altImage, !!chargerImage], [altIcon, !!chargerIcon]]) {
+      el.setAttribute('class', `charger-alt state-${visual}${on ? '' : ' hidden'}`);
+      el.style.setProperty('--zc-color', color);
+    }
+    if (chargerImage && altImage.getAttribute('src') !== chargerImage) altImage.setAttribute('src', chargerImage);
+    if (chargerIcon) altIcon.setAttribute('icon', chargerIcon);
+
     const illustration = $('illustration');
-    illustration.setAttribute('class', `illustration state-${visual}`);
+    illustration.setAttribute('class', `illustration state-${visual}${chargerImage || chargerIcon ? ' hidden' : ''}`);
     $('led-outer').style.stroke = color;
     $('led-inner').style.fill   = color;
     $('led-outer').style.color  = color; // for currentColor in the pulse filter

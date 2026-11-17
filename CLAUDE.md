@@ -165,6 +165,12 @@ and fixed during initial development; don't regress this). CSS keyframes (`zc-pu
 `zc-flow`) drive the charging/scheduled/ready animations; color comes from `STATE_COLORS` applied
 inline to `stroke`/`fill` so the same markup works in both themes.
 
+The user can replace the drawing with `charger_icon` (an `ha-icon`) or `charger_image` (an `<img>`;
+wins over the icon). Both are `.charger-alt` elements in grid column 2, next to the SVG; `_update()`
+hides whichever two aren't in use. They get the same `state-*` classes and a `--zc-color` custom
+property (the state color), which drives the icon color and a `drop-shadow` glow (`zc-glow` keyframes
+while charging, `zc-breathe` for scheduled/ready, grayscale + low opacity when disconnected).
+
 ## Adding a language
 
 1. Add a key block to `TRANSLATIONS` in `src/zaptec-charger-card.js` — copy the `en` block as a

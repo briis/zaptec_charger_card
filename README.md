@@ -9,6 +9,7 @@ A custom [Home Assistant](https://www.home-assistant.io/) Lovelace card for mana
 ## Features
 
 - Animated CSS/SVG illustration of the Zaptec Go 2 whose glow color and animation reflect the charger's state (disconnected, ready, scheduled, charging, finished)
+- Or use your own icon or image for the charger — it gets the same state-colored glow and animations
 - Live stats: price, power (kW), current (A), and session energy charged (kWh)
 - Amp-limit slider that calls `zaptec.limit_current` directly
 - Start now / schedule start / cancel schedule / stop charging actions
@@ -160,6 +161,8 @@ Zaptec install.
 | `min_current`              | number | `6`                                     | Amp slider minimum                                                                                                |
 | `max_current`              | number | `16`                                    | Amp slider maximum, and the current used by *Start now* and the scheduled start                                   |
 | `title`                    | string | `Zaptec Go 2`                           | Card title                                                                                                        |
+| `charger_icon`             | string | —                                       | Icon (e.g. `mdi:ev-station`) shown instead of the built-in charger drawing. Colored by the charger state.          |
+| `charger_image`            | string | —                                       | Image URL/path (e.g. `/local/my-charger.png`) shown instead of the drawing. Overrides `charger_icon`. A transparent PNG/SVG works best — the state glow follows its outline. |
 | `entity_charger_mode`      | string | auto                                    | Override: charger mode sensor                                                                                     |
 | `entity_charging_switch`   | string | auto                                    | Override: charging switch (Stop charging)                                                                         |
 | `entity_authorize_button`  | string | auto                                    | Override: *Authorize charging* button                                                                             |

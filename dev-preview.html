@@ -156,6 +156,17 @@
     </label>
 
     <label>
+      Charger visual
+      <select id="chargerVisual">
+        <option value="builtin" selected>built-in drawing</option>
+        <option value="icon">icon</option>
+        <option value="image">image</option>
+      </select>
+      <input type="text" id="chargerIcon" value="mdi:ev-station" style="width:120px" />
+      <input type="text" id="chargerImage" value="/images/charger-test.svg" style="width:180px" />
+    </label>
+
+    <label>
       Left car SoC
       <input type="checkbox" id="leftSocEnabled" checked />
       <input type="number" id="leftSocValue" value="68" min="0" max="100" step="1" style="width:56px" />
@@ -195,6 +206,7 @@
       'mdi:clock-start':         '⏱',
       'mdi:stop-circle-outline': '⏹',
       'mdi:cancel':              '🚫',
+      'mdi:ev-station':          '⛽',
     };
     customElements.define('ha-icon', class extends HTMLElement {
       static get observedAttributes() { return ['icon']; }
@@ -306,6 +318,8 @@
         right_soc_name:   $('rightSocName').value,
         right_soc_color:  $('rightSocColor').value,
         right_soc_image:  $('rightSocImage').value || null,
+        charger_icon:     $('chargerVisual').value === 'icon'  ? $('chargerIcon').value  : null,
+        charger_image:    $('chargerVisual').value === 'image' ? $('chargerImage').value : null,
       };
     }
 
@@ -384,6 +398,7 @@
       'currentInput', 'energyInput', 'langSelect',
       'leftSocEnabled', 'leftSocValue', 'leftSocName', 'leftSocColor', 'leftSocImage',
       'rightSocEnabled', 'rightSocValue', 'rightSocName', 'rightSocColor', 'rightSocImage',
+      'chargerVisual', 'chargerIcon', 'chargerImage',
     ].forEach(id => {
       $(id).addEventListener('input', pushUpdate);
       $(id).addEventListener('change', pushUpdate);
