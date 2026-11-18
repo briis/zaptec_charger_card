@@ -144,9 +144,14 @@ those out of the live-current calculation.
   `disconnected`) just turns it off.
 - `_ensureSchedule(time)` creates whatever is missing (admin only): helper → set its time →
   POST automation → wait for it to appear → turn it off. Callers then turn it on if needed.
-- `_syncAutomation()`: once per card instance, for admins, reads the automation over WS
-  `automation/config`, compares with `_buildAutomation()` (`stableJson`, sorted keys) and rewrites it if
-  the card's settings changed — restoring its on/off state after the async reload.
+- `_syncAutomation()` (admins, on every update, cheap when nothing changed): creates the
+  charge-current helper if missing, otherwise builds `_buildAutomation()` and — only when that differs
+  from the last verified version — reads the automation over WS `automation/config`, compares
+  (`stableJson`, sorted keys) and rewrites it, restoring its on/off state after the async reload.
+  State lives in module-level `SYNC_STATE` (per automation id: running / verified / retryAt) and
+  `HELPER_CREATION` (in-flight helper creation), shared by **every card instance on the page**
+  (dashboard, editor preview, other views) so two copies never create or rewrite in parallel. On
+  error it retries after 60 s.
 - Charge current: an `input_number` helper `CURRENT_HELPER_NAME` (0–32 A, found by friendly_name too).
   The slider writes it (`_setChargeCurrent`, skipped for 0 A). *Start now* uses `_chargeCurrent()`;
   the automation uses the same rule as Jinja (`_chargeCurrentTemplate()`): value capped at

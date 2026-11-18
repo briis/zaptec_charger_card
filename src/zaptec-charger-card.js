@@ -226,6 +226,11 @@ const AUTOMATION_ALIAS      = 'Zaptec Charger Card – scheduled start';
 const HELPER_NAME           = 'Zaptec Charger Card schedule time';
 const CURRENT_HELPER_NAME   = 'Zaptec Charger Card charge current';
 
+/** Per automation id, shared by all card instances: { running, verified, retryAt }. */
+const SYNC_STATE = new Map();
+/** Helper name → in-flight creation promise, so two card instances never create the same helper. */
+const HELPER_CREATION = new Map();
+
 /** JSON with sorted keys, to compare automation configs regardless of key order. */
 const stableJson = v => JSON.stringify(v, (k, x) =>
   x && typeof x === 'object' && !Array.isArray(x)
@@ -630,7 +635,6 @@ class ZaptecChargerCard extends HTMLElement {
     this._resolved    = null;   // { entities: {role: entity_id}, phases: [...], deviceId }
     this._resolvedKey = null;
     this._pendingTime = null;   // time picked before the schedule helper exists
-    this._synced      = false;  // automation checked against the card's settings this session
   }
 
   setConfig(config) {
@@ -639,7 +643,6 @@ class ZaptecChargerCard extends HTMLElement {
     this._config     = { ...DEFAULTS, ...config };
     this._built      = false;
     this._resolvedKey = null;
-    this._synced      = false;
     this._buildDOM();
     if (this._hass) this._update();
   }
@@ -983,6 +986,15 @@ class ZaptecChargerCard extends HTMLElement {
   /** Create the charge-current helper if missing (admin only), seeded with the current limit. */
   async _ensureCurrentHelper() {
     if (this._currentHelper() || !this._isAdmin()) return this._currentHelper();
+    // One creation per helper name across all copies of the card.
+    const name = this._currentHelperName();
+    if (!HELPER_CREATION.has(name)) {
+      HELPER_CREATION.set(name, this._createCurrentHelper().finally(() => HELPER_CREATION.delete(name)));
+    }
+    return HELPER_CREATION.get(name);
+  }
+
+  async _createCurrentHelper() {
     await this._hass.callWS({
       type: 'input_number/create',
       name: this._currentHelperName(),
@@ -1097,27 +1109,46 @@ class ZaptecChargerCard extends HTMLElement {
    * Keeps its on/off state across the rewrite.
    */
   async _syncAutomation() {
-    if (this._synced || this._isLegacy() || !this._isAdmin() || !this._scheduleReady()) return;
-    this._synced = true;
+    if (this._isLegacy() || !this._isAdmin() || !this._scheduleReady()) return;
+    // Shared by every copy of the card on the page (dashboard, editor preview,
+    // other views), so only one of them creates or rewrites at a time.
+    const id = this._automationId();
+    const st = SYNC_STATE.get(id) || {};
+    SYNC_STATE.set(id, st);
+    if (st.running || Date.now() < (st.retryAt || 0)) return;
+
+    st.running = true;
     try {
-      // Schedules set up before the charge-current helper existed get it now.
-      await this._ensureCurrentHelper();
-      const { entityId, stateObj } = this._scheduleAutomation();
+      if (!this._currentHelper()) {
+        // Schedules set up before the charge-current helper existed get it now.
+        // The automation is checked on a later update, once the helper is in hass.states.
+        await this._ensureCurrentHelper();
+        return;
+      }
       const wanted = this._buildAutomation(this._scheduleHelper().entityId);
+      const wantedJson = stableJson(wanted);
+      if (st.verified === wantedJson) return;
+
+      const { entityId, stateObj } = this._scheduleAutomation();
       const { config } = await this._hass.callWS({ type: 'automation/config', entity_id: entityId });
       const { id: _id, ...current } = config || {};
-      if (stableJson(current) === stableJson(wanted)) return;
-      const wasOn = stateObj.state === 'on';
-      const before = stateObj.last_updated;
-      await this._writeAutomation(this._scheduleHelper().entityId);
-      // Wait for the reload to replace the entity before restoring its state.
-      await this._waitFor(() => this._scheduleAutomation()?.stateObj?.last_updated !== before, 5000);
-      const now = this._scheduleAutomation();
-      if (now && (now.stateObj.state === 'on') !== wasOn) {
-        await this._hass.callService('automation', wasOn ? 'turn_on' : 'turn_off', {}, { entity_id: now.entityId });
+      if (stableJson(current) !== wantedJson) {
+        const wasOn = stateObj.state === 'on';
+        const before = stateObj.last_updated;
+        await this._hass.callApi('POST', `config/automation/config/${id}`, wanted);
+        // Wait for the reload to replace the entity before restoring its state.
+        await this._waitFor(() => this._scheduleAutomation()?.stateObj?.last_updated !== before, 5000);
+        const now = this._scheduleAutomation();
+        if (now && (now.stateObj.state === 'on') !== wasOn) {
+          await this._hass.callService('automation', wasOn ? 'turn_on' : 'turn_off', {}, { entity_id: now.entityId });
+        }
       }
+      st.verified = wantedJson;
     } catch (err) {
       console.warn('[zaptec-charger-card] could not sync the schedule automation', err);
+      st.retryAt = Date.now() + 60000;
+    } finally {
+      st.running = false;
     }
   }
 
