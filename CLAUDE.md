@@ -181,6 +181,13 @@ hides whichever two aren't in use. They get the same `state-*` classes and a `--
 property (the state color), which drives the icon color and a `drop-shadow` glow (`zc-glow` keyframes
 while charging, `zc-breathe` for scheduled/ready, grayscale + low opacity when disconnected).
 
+## README links and images
+
+HACS renders the README inside Home Assistant, where relative paths don't resolve. Always use full
+URLs in `README.md`: `https://raw.githubusercontent.com/briis/zaptec_charger_card/main/images/...` for
+images and `https://github.com/briis/zaptec_charger_card/blob/main/...` for links to repo files.
+In-page anchors (`#setup-first-run`) are fine.
+
 ## Adding a language
 
 1. Add a key block to `TRANSLATIONS` in `src/zaptec-charger-card.js` — copy the `en` block as a

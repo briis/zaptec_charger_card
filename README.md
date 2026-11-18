@@ -27,7 +27,7 @@ Since v2 the card is **self-contained**: there are no helpers, scripts or automa
 create. It finds the Zaptec integration's entities by itself, calls the Zaptec services directly, and
 sets up its own time helper and automation for the scheduled start the first time an admin uses it —
 see [Setup](#setup-first-run). Coming from v1? See [Upgrading from v1](#upgrading-from-v1-helpers--scripts).
-For what changed between versions, see the [changelog](CHANGELOG.md).
+For what changed between versions, see the [changelog](https://github.com/briis/zaptec_charger_card/blob/main/CHANGELOG.md).
 
 ---
 
@@ -289,4 +289,4 @@ helpers. Switch to the built-in logic when it suits you:
 
 ## License
 
-[MIT](LICENSE)
+[MIT](https://github.com/briis/zaptec_charger_card/blob/main/LICENSE)
