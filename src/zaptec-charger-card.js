@@ -181,8 +181,8 @@ const DEFAULTS = {
   script_start_now:          null,
   script_schedule:           null,
   script_cancel_schedule:    null,
-  min_current:               6,
-  max_current:               16,
+  min_current:               0,   // 0 A = paused; lets the slider stop charging without deauthorizing
+  max_current:               16,  // standard 16 A home installation
   title:                     null,
   charger_icon:              null,  // e.g. mdi:ev-station — replaces the built-in SVG
   charger_image:             null,  // e.g. /local/charger.png — overrides charger_icon

@@ -45,6 +45,9 @@ Existing v1 setups keep working unchanged (see *Upgrading* below).
 - The card editor puts the Zaptec device pickers first. Car tiles, entity overrides and legacy fields
   are in collapsible sections. Clearing a field falls back to auto-detection.
 - A new card starts with an empty config (`getStubConfig()` returns `{}`).
+- `min_current` now defaults to **0 A** (was 6 A), so the slider can pause charging. `max_current` stays at
+  16 A, the standard for most homes. Cards that already have `min_current: 6` in their config keep it —
+  remove the line (or set it to 0) to get the new default.
 
 ### Removed
 

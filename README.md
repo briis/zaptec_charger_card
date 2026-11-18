@@ -156,8 +156,8 @@ Zaptec install.
 | `device_id`                | string | auto                                    | Zaptec **installation** device, used for `zaptec.limit_current`. Device picker in the editor.                     |
 | `charger_device_id`        | string | auto                                    | Zaptec **charger** device. Only needed with several chargers, to pick which one the card shows.                   |
 | `entity_price`             | string | `sensor.stromligning_current_price_vat` | Live electricity price                                                                                            |
-| `min_current`              | number | `6`                                     | Amp slider minimum                                                                                                |
-| `max_current`              | number | `16`                                    | Amp slider maximum, and the current used by *Start now* and the scheduled start                                   |
+| `min_current`              | number | `0`                                     | Amp slider minimum. `0` A pauses charging without ending the session.                                             |
+| `max_current`              | number | `16`                                    | Amp slider maximum, and the current used by *Start now* and the scheduled start. 16 A suits most home installations. |
 | `title`                    | string | `Zaptec Go 2`                           | Card title                                                                                                        |
 | `charger_icon`             | string | —                                       | Icon (e.g. `mdi:ev-station`) shown instead of the built-in charger drawing. Colored by the charger state.          |
 | `charger_image`            | string | —                                       | Image URL/path (e.g. `/local/my-charger.png`) shown instead of the drawing. Overrides `charger_icon`. A transparent PNG/SVG works best — the state glow follows its outline. |
