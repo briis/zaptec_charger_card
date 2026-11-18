@@ -115,11 +115,12 @@ For what changed between versions, see the [changelog](https://github.com/briis/
    - tap **Schedule start**, or
    - tap the clock (schedule) button.
 
-   The card now creates two things, which you'll find under **Settings**:
+   The card now creates three things, which you'll find under **Settings**:
 
    | What                                                      | Where                                   | Purpose                              |
    | --------------------------------------------------------- | --------------------------------------- | ------------------------------------ |
    | Time helper **Zaptec Charger Card schedule time**         | Settings → Devices & services → Helpers | Holds the scheduled start time       |
+   | Number helper **Zaptec Charger Card charge current**      | Settings → Devices & services → Helpers | Remembers the charge current         |
    | Automation **Zaptec Charger Card – scheduled start**      | Settings → Automations & scenes         | Starts charging at that time         |
 
    If you picked a time, the schedule is created switched **off**; with *Schedule start* or the clock
@@ -132,13 +133,15 @@ greyed out, with the tooltip *"The schedule has to be set up once by an administ
 
 **Good to know**
 
-- Don't rename the time helper — the card finds it by its name. Don't edit the automation either: when
+- Don't rename the two helpers — the card finds them by their names. Don't edit the automation either: when
   an admin opens the card and the card's settings (e.g. *Maximum current*) no longer match it, the card
   rewrites it automatically.
+- Already set up the schedule with 2.0.0-beta1? Open the dashboard once as an admin: the card adds the
+  charge-current helper and updates the automation to use it.
 - If you change *Maximum current* in the card editor, open the dashboard once as an admin afterwards
   so the automation is updated to the new value.
-- Deleted the helper or the automation by accident? Do step 2 again — the card recreates what's missing.
-- Removing the card from your dashboard doesn't remove the helper and the automation; delete them in
+- Deleted a helper or the automation by accident? Do step 2 again — the card recreates what's missing.
+- Removing the card from your dashboard doesn't remove the helpers and the automation; delete them in
   Settings if you no longer need them.
 
 ---
@@ -157,7 +160,7 @@ Zaptec install.
 | `charger_device_id`        | string | auto                                    | Zaptec **charger** device. Only needed with several chargers, to pick which one the card shows.                   |
 | `entity_price`             | string | `sensor.stromligning_current_price_vat` | Live electricity price                                                                                            |
 | `min_current`              | number | `0`                                     | Amp slider minimum. `0` A pauses charging without ending the session.                                             |
-| `max_current`              | number | `16`                                    | Amp slider maximum, and the current used by *Start now* and the scheduled start. 16 A suits most home installations. |
+| `max_current`              | number | `16`                                    | Amp slider maximum, and the most *Start now* and the scheduled start will use (see [charge current](#charge-current)). 16 A suits most home installations. |
 | `title`                    | string | `Zaptec Go 2`                           | Card title                                                                                                        |
 | `charger_icon`             | string | —                                       | Icon (e.g. `mdi:ev-station`) shown instead of the built-in charger drawing. Colored by the charger state.          |
 | `charger_image`            | string | —                                       | Image URL/path (e.g. `/local/my-charger.png`) shown instead of the drawing. Overrides `charger_icon`. A transparent PNG/SVG works best — the state glow follows its outline. |
@@ -204,25 +207,37 @@ editor under *Entities* — useful if you have more than one charger (pick the c
 
 | Action                  | What the card does                                                                                                                        |
 | ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| Start now               | Turns off a pending schedule, `zaptec.limit_current` → max current, waits 2 s, presses *Authorize charging* if the charger is waiting for authorization and isn't authorized yet |
+| Start now               | Turns off a pending schedule, `zaptec.limit_current` → the [charge current](#charge-current), waits 2 s, presses *Authorize charging* if the charger is waiting for authorization and isn't authorized yet |
 | Schedule start          | `zaptec.limit_current` → 0 A, waits 2 s, authorizes (same rule), then turns the schedule automation on                                  |
 | Cancel scheduled start  | Turns the schedule automation off                                                                                                         |
 | Stop charging           | `switch.turn_off` on the charging switch                                                                                                  |
 | Schedule toggle         | Turns the schedule automation on/off                                                                                                      |
 | Time picker             | `input_datetime.set_datetime` on the card's time helper                                                                                  |
-| Amp slider              | `zaptec.limit_current` with the selected current                                                                                         |
+| Amp slider              | `zaptec.limit_current` with the selected current, and remembers it as the [charge current](#charge-current) (unless it's 0 A)         |
 
-**The schedule: one helper + one automation, created by the card.** The first time an admin uses the
+**The schedule: two helpers + one automation, created by the card.** The first time an admin uses the
 schedule, the card creates:
 
 - a time helper, **Zaptec Charger Card schedule time** (`input_datetime`, time only) — this holds the
   scheduled time, so changing it is an ordinary helper update anyone can make;
+- a number helper, **Zaptec Charger Card charge current** (`input_number`, 0–32 A) — the
+  [charge current](#charge-current);
 - an automation, **Zaptec Charger Card – scheduled start** (id
   `zaptec_charger_card_schedule_<installation device id>`), triggered at the helper's time.
 
 Both show up in Settings like any other helper/automation. The automation's on/off state *is* the
-card's "schedule active" state. When it fires it sets the current to max (and authorizes if needed),
+card's "schedule active" state. When it fires it sets the charge current (and authorizes if needed),
 then switches itself off — so it runs once. Unplugging the car also switches it off.
+
+<a id="charge-current"></a>**Charge current.** Moving the amp slider applies the new limit right away
+*and* stores it in the charge-current helper. *Start now* and the scheduled start then charge at that
+stored value instead of always jumping back to `max_current` — set 14 A once, and every following
+start uses 14 A. The rules:
+
+- The stored value is capped at `max_current`.
+- Sliding to **0 A** pauses charging but isn't stored, so the next start doesn't start at 0 A.
+- Without the helper (not set up yet, or legacy mode), starts use `max_current`.
+- Anyone can change it, like the time, since it's an ordinary helper.
 
 See [Setup → Good to know](#setup-first-run) for what not to touch. If you have two cards for the
 same charger and want separate schedules, set a different `schedule_id` on each (each gets its own

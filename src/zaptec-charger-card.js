@@ -224,6 +224,7 @@ const DEFAULT_SCHEDULE_TIME = '06:00';
 const AUTOMATION_PREFIX     = 'zaptec_charger_card_schedule';
 const AUTOMATION_ALIAS      = 'Zaptec Charger Card – scheduled start';
 const HELPER_NAME           = 'Zaptec Charger Card schedule time';
+const CURRENT_HELPER_NAME   = 'Zaptec Charger Card charge current';
 
 /** JSON with sorted keys, to compare automation configs regardless of key order. */
 const stableJson = v => JSON.stringify(v, (k, x) =>
@@ -822,8 +823,11 @@ class ZaptecChargerCard extends HTMLElement {
       $('amp-value').textContent = `${slider.value} A`;
     });
     slider.addEventListener('change', () => {
+      // Read the value now: _guard() re-renders first, which resets the
+      // slider to the charger's current limit.
+      const amps = Number(slider.value);
       this._sliderDirty = false;
-      this._guard(() => this._limitCurrent(Number(slider.value)));
+      this._guard(() => this._setChargeCurrent(amps));
     });
 
     this._built = true;
@@ -943,6 +947,60 @@ class ZaptecChargerCard extends HTMLElement {
     return entityId ? { entityId, stateObj: states[entityId] } : null;
   }
 
+  _currentHelperName() {
+    return this._config.schedule_id ? `${CURRENT_HELPER_NAME} (${this._config.schedule_id})` : CURRENT_HELPER_NAME;
+  }
+
+  /** The card's charge-current helper (input_number), found by name like the time helper. */
+  _currentHelper() {
+    const name = this._currentHelperName();
+    const states = this._hass?.states || {};
+    const entityId = Object.keys(states).find(k =>
+      k.startsWith('input_number.') && states[k].attributes?.friendly_name === name);
+    return entityId ? { entityId, stateObj: states[entityId] } : null;
+  }
+
+  /**
+   * Current to charge with on Start now / scheduled start: the last value set
+   * on the slider (stored in the helper), capped at max_current. 0 or no
+   * helper → max_current.
+   */
+  _chargeCurrent() {
+    const max = Number(this._config.max_current);
+    if (this._isLegacy()) return max;
+    const v = this._num(this._currentHelper()?.entityId);
+    return !isNaN(v) && v > 0 ? Math.min(v, max) : max;
+  }
+
+  /** Jinja for the automation: same rule as _chargeCurrent(), evaluated when it fires. */
+  _chargeCurrentTemplate() {
+    const max = Number(this._config.max_current);
+    const helper = this._currentHelper();
+    if (!helper) return max;
+    return `{% set a = states('${helper.entityId}') | int(0) %}{{ [a, ${max}] | min if a > 0 else ${max} }}`;
+  }
+
+  /** Create the charge-current helper if missing (admin only), seeded with the current limit. */
+  async _ensureCurrentHelper() {
+    if (this._currentHelper() || !this._isAdmin()) return this._currentHelper();
+    await this._hass.callWS({
+      type: 'input_number/create',
+      name: this._currentHelperName(),
+      icon: 'mdi:current-ac',
+      min: 0,
+      max: 32,
+      step: 1,
+      mode: 'box',
+      unit_of_measurement: 'A',
+    });
+    const helper = await this._waitFor(() => this._currentHelper());
+    if (!helper) throw new Error('charge current helper did not appear');
+    const avail = this._num(this._ent('entity_available_current'));
+    const seed = !isNaN(avail) && avail > 0 ? Math.min(Math.round(avail), Number(this._config.max_current)) : Number(this._config.max_current);
+    await this._hass.callService('input_number', 'set_value', { value: seed }, { entity_id: helper.entityId });
+    return helper;
+  }
+
   _scheduleReady() {
     return !!(this._scheduleAutomation() && this._scheduleHelper());
   }
@@ -974,7 +1032,7 @@ class ZaptecChargerCard extends HTMLElement {
     if (authorized) authorizeIf.push({ condition: 'state', entity_id: authorized, state: 'off' });
 
     const startSequence = [
-      { action: 'zaptec.limit_current', data: { device_id: this._deviceId(), available_current: Number(this._config.max_current) } },
+      { action: 'zaptec.limit_current', data: { device_id: this._deviceId(), available_current: this._chargeCurrentTemplate() } },
     ];
     if (authorize) {
       startSequence.push({ delay: { seconds: 2 } });
@@ -983,7 +1041,7 @@ class ZaptecChargerCard extends HTMLElement {
 
     return {
       alias: AUTOMATION_ALIAS,
-      description: `Managed by zaptec-charger-card. The start time is ${helperEntityId}. Switched on/off from the card and rewritten when the card's settings change — edits here will be overwritten. Runs once, then turns itself off.`,
+      description: `Managed by zaptec-charger-card. The start time is ${helperEntityId}${this._currentHelper() ? `, the charge current ${this._currentHelper().entityId}` : ''}. Switched on/off from the card and rewritten when the card's settings change — edits here will be overwritten. Runs once, then turns itself off.`,
       mode: 'single',
       triggers,
       conditions: [],
@@ -1015,6 +1073,8 @@ class ZaptecChargerCard extends HTMLElement {
       if (!helper) throw new Error('schedule time helper did not appear');
       await this._hass.callService('input_datetime', 'set_datetime', { time: `${time}:00` }, { entity_id: helper.entityId });
     }
+    // Before the automation, so it references the charge-current helper from the start.
+    await this._ensureCurrentHelper();
 
     let automation = this._scheduleAutomation();
     if (!automation) {
@@ -1031,16 +1091,19 @@ class ZaptecChargerCard extends HTMLElement {
   }
 
   /**
-   * Admin only, once per card instance: rewrite the automation if the card's
-   * settings (max current, entities, device) no longer match what it holds.
+   * Admin only, once per card instance: create the charge-current helper if
+   * missing, then rewrite the automation if the card's settings (max current,
+   * entities, device, helpers) no longer match what it holds.
    * Keeps its on/off state across the rewrite.
    */
   async _syncAutomation() {
     if (this._synced || this._isLegacy() || !this._isAdmin() || !this._scheduleReady()) return;
     this._synced = true;
-    const { entityId, stateObj } = this._scheduleAutomation();
-    const wanted = this._buildAutomation(this._scheduleHelper().entityId);
     try {
+      // Schedules set up before the charge-current helper existed get it now.
+      await this._ensureCurrentHelper();
+      const { entityId, stateObj } = this._scheduleAutomation();
+      const wanted = this._buildAutomation(this._scheduleHelper().entityId);
       const { config } = await this._hass.callWS({ type: 'automation/config', entity_id: entityId });
       const { id: _id, ...current } = config || {};
       if (stableJson(current) === stableJson(wanted)) return;
@@ -1108,6 +1171,15 @@ class ZaptecChargerCard extends HTMLElement {
     });
   }
 
+  /** Slider: apply now, and remember it (if > 0) for Start now and the scheduled start. */
+  async _setChargeCurrent(amps) {
+    await this._limitCurrent(amps);
+    const helper = !this._isLegacy() && this._currentHelper();
+    if (helper && amps > 0) {
+      await this._hass.callService('input_number', 'set_value', { value: amps }, { entity_id: helper.entityId });
+    }
+  }
+
   /** The service call that authorizes charging, as an automation action. */
   _authorizeAction() {
     const button = this._ent('entity_authorize_button');
@@ -1130,7 +1202,7 @@ class ZaptecChargerCard extends HTMLElement {
   async _startNow() {
     if (this._isLegacy()) return this._config.script_start_now && this._runScript(this._config.script_start_now);
     await this._disableSchedule();
-    await this._limitCurrent(Number(this._config.max_current));
+    await this._limitCurrent(this._chargeCurrent());
     await sleep(2000);
     await this._authorizeIfNeeded();
   }

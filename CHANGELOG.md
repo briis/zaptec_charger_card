@@ -26,6 +26,11 @@ Existing v1 setups keep working unchanged (see *Upgrading* below).
   - After the first setup, every user (admin or not) can change the time, schedule, cancel and toggle.
 - When an admin opens the card, it updates the schedule automation if the card's settings changed
   (for example *Maximum current*).
+- **Remembered charge current.** The amp slider's value is stored in a third card-created helper
+  (*Zaptec Charger Card charge current*). *Start now* and the scheduled start use it, capped at
+  *Maximum current*, instead of always starting at the maximum. Sliding to 0 A pauses charging without
+  changing the stored value. Schedules set up with beta1 get the helper the next time an admin opens
+  the card.
 - **Own charger icon or image.** New `charger_icon` and `charger_image` options replace the built-in
   drawing. They keep the state-colored glow and animations.
 - **Card picker suggestion** (Home Assistant 2026.6+): when you pick any Zaptec entity in the card picker,
@@ -48,6 +53,10 @@ Existing v1 setups keep working unchanged (see *Upgrading* below).
 - `min_current` now defaults to **0 A** (was 6 A), so the slider can pause charging. `max_current` stays at
   16 A, the standard for most homes. Cards that already have `min_current: 6` in their config keep it —
   remove the line (or set it to 0) to get the new default.
+
+### Fixed
+
+- Moving the amp slider re-sent the previous limit instead of the new one (2.0.0-beta1).
 
 ### Removed
 

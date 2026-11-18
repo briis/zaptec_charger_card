@@ -7,8 +7,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 A Home Assistant custom Lovelace card distributed via HACS (as a custom repository, not in the
 default store) for a Zaptec Go 2 EV charger. Since v2 it is self-contained: it auto-detects the Zaptec
 integration's entities, calls the Zaptec services directly for start/stop/amp limit, and owns the
-scheduled start through **one card-managed `input_datetime` helper + one automation** that it creates
-itself (WS `input_datetime/create`, `POST config/automation/config/<id>`). The automation is needed because a browser-only card can't
+scheduled start through **card-managed helpers (`input_datetime` time, `input_number` charge current)
++ one automation** that it creates itself (WS `input_datetime/create` / `input_number/create`,
+`POST config/automation/config/<id>`). The automation is needed because a browser-only card can't
 guarantee firing an action at the scheduled time if no dashboard is open.
 
 The v1 setup (3 helpers, 3 scripts, 3 automations) still works as **legacy mode**: active when
@@ -129,7 +130,7 @@ Without `hass.entities` (old frontends) it falls back to suffix matching over `h
 installation also has `sensor.*_available_current_phase_N` — `PHASE_CURRENT_MATCHER.exclude` keeps
 those out of the live-current calculation.
 
-### Schedule (helper + automation)
+### Schedule (helpers + automation)
 
 - Time: an `input_datetime` storage helper named `HELPER_NAME` (+ ` (<schedule_id>)`), created over
   WS `input_datetime/create`. Found in `hass.states` **by friendly_name**, not entity_id (the entity
@@ -146,6 +147,14 @@ those out of the live-current calculation.
 - `_syncAutomation()`: once per card instance, for admins, reads the automation over WS
   `automation/config`, compares with `_buildAutomation()` (`stableJson`, sorted keys) and rewrites it if
   the card's settings changed — restoring its on/off state after the async reload.
+- Charge current: an `input_number` helper `CURRENT_HELPER_NAME` (0–32 A, found by friendly_name too).
+  The slider writes it (`_setChargeCurrent`, skipped for 0 A). *Start now* uses `_chargeCurrent()`;
+  the automation uses the same rule as Jinja (`_chargeCurrentTemplate()`): value capped at
+  `max_current`, 0/missing → `max_current`. Created in `_ensureSchedule` *before* the automation, and
+  by `_syncAutomation` for schedules created before it existed (beta1). Optional: without it,
+  everything falls back to `max_current`.
+- Slider gotcha: read `slider.value` *before* `_guard()` — `_guard` re-renders first, which resets the
+  slider to the charger's current limit.
 - Non-admins: everything works once both exist (`_scheduleReady()`); before that the time picker,
   toggle and Schedule start are disabled with a tooltip.
 
@@ -153,13 +162,13 @@ those out of the live-current calculation.
 
 | Action | Service call |
 |---|---|
-| Start now | turn schedule automation off → `zaptec.limit_current` (max) → 2 s → `button.press` authorize if mode is `connected_requesting` and *Authorized* is off |
+| Start now | turn schedule automation off → `zaptec.limit_current` (`_chargeCurrent()`) → 2 s → `button.press` authorize if mode is `connected_requesting` and *Authorized* is off |
 | Schedule start | `zaptec.limit_current` (0) → 2 s → authorize (same rule) → `_ensureSchedule` → `automation.turn_on` |
 | Cancel schedule | `automation.turn_off` |
 | Stop charging | `switch.turn_off` on the charging switch |
 | Schedule toggle | `automation.toggle` (or `_ensureSchedule` + turn on if not set up) |
 | Time picker | `input_datetime.set_datetime` on the helper (`_ensureSchedule` first if not set up) |
-| Amp slider | `zaptec.limit_current` with `device_id` + `available_current`, fired on `change` (not `input`) |
+| Amp slider | `zaptec.limit_current` with `device_id` + `available_current`, fired on `change` (not `input`); then `input_number.set_value` on the charge-current helper if > 0 |
 
 In legacy mode the buttons call the configured `script.*`, the toggle `input_boolean.toggle` and the
 time picker `input_datetime.set_datetime`, exactly as v1. All actions go through `_guard()`, which

@@ -289,6 +289,11 @@
         setTimeout(() => { helpers[entityId] = { name: msg.name, state: '00:00:00' }; pushUpdate(); }, 200);
         return { id: slug(msg.name), name: msg.name };
       }
+      if (msg.type === 'input_number/create') {
+        const entityId = `input_number.${slug(msg.name)}`;
+        setTimeout(() => { helpers[entityId] = { name: msg.name, state: String(msg.min ?? 0), number: msg }; pushUpdate(); }, 200);
+        return { id: slug(msg.name), name: msg.name };
+      }
       if (msg.type === 'automation/config') {
         const a = Object.entries(automations).find(([, x]) => x.entityId === msg.entity_id);
         return { config: a ? { id: a[0], ...a[1].config } : null };
@@ -312,6 +317,9 @@
       }
       if (domain === 'input_datetime' && service === 'set_datetime' && helpers[target.entity_id]) {
         helpers[target.entity_id].state = data.time;
+      }
+      if (domain === 'input_number' && service === 'set_value' && helpers[target.entity_id]) {
+        helpers[target.entity_id].state = String(data.value);
       }
       if (domain === 'switch' && service === 'turn_off') {
         $('modeSelect').value = 'connected_finished';
@@ -380,7 +388,9 @@
         'sensor.right_car_state_of_charge':             mkState($('rightSocValue').value, '%'),
       };
       for (const [entityId, h] of Object.entries(helpers)) {
-        states[entityId] = mkState(h.state, undefined, { friendly_name: h.name, has_date: false, has_time: true, editable: true });
+        states[entityId] = h.number
+          ? mkState(h.state, 'A', { friendly_name: h.name, min: h.number.min, max: h.number.max, step: h.number.step, editable: true })
+          : mkState(h.state, undefined, { friendly_name: h.name, has_date: false, has_time: true, editable: true });
       }
       for (const [id, a] of Object.entries(automations)) {
         states[a.entityId] = mkState(a.state, undefined, { id, friendly_name: a.config.alias });
