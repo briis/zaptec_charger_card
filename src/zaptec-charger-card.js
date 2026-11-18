@@ -1068,7 +1068,14 @@ class ZaptecChargerCard extends HTMLElement {
       triggers,
       conditions: [],
       actions: [
-        { choose: [{ conditions: [{ condition: 'trigger', id: 'start' }], sequence: startSequence }] },
+        {
+          choose: [
+            { conditions: [{ condition: 'trigger', id: 'start' }], sequence: startSequence },
+            // Unplugged while scheduled: undo the 0 A hold from Schedule start, so the
+            // charger isn't left blocked for the next session (app, RFID, other automations).
+            ...(mode ? [{ conditions: [{ condition: 'trigger', id: 'unplugged' }], sequence: [startSequence[0]] }] : []),
+          ],
+        },
         { action: 'automation.turn_off', target: { entity_id: '{{ this.entity_id }}' }, data: { stop_actions: false } },
       ],
     };

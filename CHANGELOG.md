@@ -22,7 +22,8 @@ Existing v1 setups keep working unchanged (see *Upgrading* below).
   time helper (*Zaptec Charger Card schedule time*) and an automation
   (*Zaptec Charger Card – scheduled start*).
   - The automation fires at the helper's time, even with no dashboard open.
-  - It runs once, then switches itself off. Unplugging the car also cancels it.
+  - It runs once, then switches itself off. Unplugging the car also cancels it, and sets the current
+    back from the 0 A hold to the charge current.
   - After the first setup, every user (admin or not) can change the time, schedule, cancel and toggle.
 - When an admin opens the card, it updates the schedule automation if the card's settings changed
   (for example *Maximum current*).

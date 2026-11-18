@@ -229,7 +229,9 @@ schedule, the card creates:
 Both show up in Settings like any other helper/automation. The automation's on/off state *is* the
 card's "schedule active" state. When it fires it sets the charge current (and authorizes, or resumes a
 charger that was stopped, if needed),
-then switches itself off — so it runs once. Unplugging the car also switches it off.
+then switches itself off — so it runs once. Unplugging the car while a start is scheduled also switches
+it off, and sets the current back from the 0 A hold to the charge current, so the charger isn't left
+blocked for a session started some other way (Zaptec app, RFID tag, another automation).
 
 <a id="charge-current"></a>**Charge current.** Moving the amp slider applies the new limit right away
 *and* stores it in the charge-current helper. *Start now* and the scheduled start then charge at that

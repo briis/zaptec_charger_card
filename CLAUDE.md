@@ -143,7 +143,8 @@ those out of the live-current calculation.
   **resume** (`_resumeAction()`: resume button → `switch.turn_on` charging → `zaptec.resume_charging`) if
   `connected_finished` — a charger stopped with *Stop charging* stays finished and ignores authorize — then `automation.turn_off` on itself with
   `stop_actions: false` (the default `true` would abort its own run). A second trigger (charger mode →
-  `disconnected`) just turns it off.
+  `disconnected`, id `unplugged`) restores the 0 A hold to the charge current (same template) and turns
+  it off.
 - `_ensureSchedule(time)` creates whatever is missing (admin only): helper → set its time →
   POST automation → wait for it to appear → turn it off. Callers then turn it on if needed.
 - `_syncAutomation()` (admins, on every update, cheap when nothing changed): creates the
