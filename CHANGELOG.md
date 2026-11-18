@@ -57,6 +57,9 @@ Existing v1 setups keep working unchanged (see *Upgrading* below).
 ### Fixed
 
 - Moving the amp slider re-sent the previous limit instead of the new one (2.0.0-beta1).
+- *Start now* and the scheduled start did nothing after charging had been stopped with *Stop charging*
+  (charger mode *connected_finished*): they only authorized, which a stopped charger doesn't need. They
+  now press *Resume charging* in that case. New option `entity_resume_button` (auto-detected).
 - An existing schedule automation could keep its old settings after an update, for example when several
   copies of the card were open at once. The card now re-checks it whenever what it should contain changes,
   with only one copy creating or rewriting at a time.

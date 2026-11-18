@@ -139,7 +139,9 @@ those out of the live-current calculation.
 - Automation: id `zaptec_charger_card_schedule_<schedule_id || installation device id>`, found in
   `hass.states` by `attributes.id`. Time trigger `at: <helper entity_id>`. Its on/off state is the
   "schedule enabled" state.
-- On fire: `limit_current` → max, authorize if needed, then `automation.turn_off` on itself with
+- On fire: `limit_current` → charge current, 2 s, authorize if `connected_requesting` + not authorized,
+  **resume** (`_resumeAction()`: resume button → `switch.turn_on` charging → `zaptec.resume_charging`) if
+  `connected_finished` — a charger stopped with *Stop charging* stays finished and ignores authorize — then `automation.turn_off` on itself with
   `stop_actions: false` (the default `true` would abort its own run). A second trigger (charger mode →
   `disconnected`) just turns it off.
 - `_ensureSchedule(time)` creates whatever is missing (admin only): helper → set its time →
@@ -167,7 +169,7 @@ those out of the live-current calculation.
 
 | Action | Service call |
 |---|---|
-| Start now | turn schedule automation off → `zaptec.limit_current` (`_chargeCurrent()`) → 2 s → `button.press` authorize if mode is `connected_requesting` and *Authorized* is off |
+| Start now | turn schedule automation off → `zaptec.limit_current` (`_chargeCurrent()`) → 2 s → `button.press` authorize if mode is `connected_requesting` and *Authorized* is off → resume if mode is `connected_finished` |
 | Schedule start | `zaptec.limit_current` (0) → 2 s → authorize (same rule) → `_ensureSchedule` → `automation.turn_on` |
 | Cancel schedule | `automation.turn_off` |
 | Stop charging | `switch.turn_off` on the charging switch |

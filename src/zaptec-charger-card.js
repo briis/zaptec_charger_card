@@ -42,6 +42,7 @@ const TRANSLATIONS = {
     editor_entity_charger_mode:      'Charger mode sensor',
     editor_entity_charging_switch:   'Charging switch',
     editor_entity_authorize_button:  'Authorize button',
+    editor_entity_resume_button:     'Resume charging button',
     editor_entity_deauthorize_button: 'Deauthorize button',
     editor_entity_is_authorized:     'Authorized helper (input_boolean)',
     editor_entity_schedule_enabled:  'Schedule enabled helper (input_boolean)',
@@ -112,6 +113,7 @@ const TRANSLATIONS = {
     editor_entity_charger_mode:      'Charger mode sensor',
     editor_entity_charging_switch:   'Charging switch',
     editor_entity_authorize_button:  'Authorize button',
+    editor_entity_resume_button:     'Resume charging button',
     editor_entity_deauthorize_button: 'Deauthorize button',
     editor_entity_is_authorized:     'Authorized helper (input_boolean)',
     editor_entity_schedule_enabled:  'Schedule enabled helper (input_boolean)',
@@ -166,6 +168,7 @@ const DEFAULTS = {
   entity_charger_mode:       null,
   entity_charging_switch:    null,
   entity_authorize_button:   null,
+  entity_resume_button:      null,
   entity_authorized:         null,
   entity_available_current:  null,
   entity_price:              'sensor.stromligning_current_price_vat',
@@ -207,6 +210,7 @@ const ENTITY_MATCHERS = {
   entity_charger_mode:      { domain: 'sensor',        scope: 'charger',      keys: ['charger_operation_mode', 'operation_mode', 'charger_mode'], suffixes: ['_charger_mode', '_operation_mode'] },
   entity_charging_switch:   { domain: 'switch',        scope: 'charger',      keys: ['charging'],                                                 suffixes: ['_charging'] },
   entity_authorize_button:  { domain: 'button',        scope: 'charger',      keys: ['authorize_charging'],                                       suffixes: ['_authorize_charging'] },
+  entity_resume_button:     { domain: 'button',        scope: 'charger',      keys: ['resume_charging'],                                          suffixes: ['_resume_charging'] },
   entity_authorized:        { domain: 'binary_sensor', scope: 'charger',      keys: ['authorized', 'charger_current_user_uuid'],                  suffixes: ['_authorized', '_authorized_power'] },
   entity_session_energy:    { domain: 'sensor',        scope: 'charger',      keys: ['session_total_charge', 'session_energy'],                   suffixes: ['_session_total_charge'] },
   entity_power:             { domain: 'sensor',        scope: 'charger',      keys: ['charge_power', 'total_charge_power'],                       suffixes: ['_charge_power', '_charger_power', '_total_charge_power'] },
@@ -507,6 +511,7 @@ const ENTITY_FIELDS = [
   ['entity_charger_mode',       'sensor'],
   ['entity_charging_switch',    'switch'],
   ['entity_authorize_button',   'button'],
+  ['entity_resume_button',      'button'],
   ['entity_authorized',         'binary_sensor'],
   ['entity_available_current',  'number'],
   ['entity_session_energy',     'sensor'],
@@ -1046,9 +1051,14 @@ class ZaptecChargerCard extends HTMLElement {
     const startSequence = [
       { action: 'zaptec.limit_current', data: { device_id: this._deviceId(), available_current: this._chargeCurrentTemplate() } },
     ];
+    const resume = this._resumeAction();
+    if (authorize || (resume && mode)) startSequence.push({ delay: { seconds: 2 } });
     if (authorize) {
-      startSequence.push({ delay: { seconds: 2 } });
       startSequence.push(authorizeIf.length ? { if: authorizeIf, then: [authorize] } : authorize);
+    }
+    // A charger that was stopped (connected_finished) needs a resume, not an authorize.
+    if (resume && mode) {
+      startSequence.push({ if: [{ condition: 'state', entity_id: mode, state: 'connected_finished' }], then: [resume] });
     }
 
     return {
@@ -1219,6 +1229,25 @@ class ZaptecChargerCard extends HTMLElement {
     return null;
   }
 
+  /** The service call that resumes a stopped charger, as an automation action. */
+  _resumeAction() {
+    const button = this._ent('entity_resume_button');
+    if (button) return { action: 'button.press', target: { entity_id: button } };
+    const sw = this._ent('entity_charging_switch');
+    if (sw) return { action: 'switch.turn_on', target: { entity_id: sw } };
+    if (this._config.charger_device_id) return { action: 'zaptec.resume_charging', data: { device_id: this._config.charger_device_id } };
+    return null;
+  }
+
+  /** Resume if charging was stopped (charger mode connected_finished). */
+  async _resumeIfStopped() {
+    if (this._state(this._ent('entity_charger_mode')) !== 'connected_finished') return;
+    const a = this._resumeAction();
+    if (!a) return;
+    const [domain, service] = a.action.split('.');
+    await this._hass.callService(domain, service, a.data || {}, a.target);
+  }
+
   async _authorizeIfNeeded() {
     const mode = this._state(this._ent('entity_charger_mode'));
     if (mode !== 'connected_requesting') return;
@@ -1236,6 +1265,7 @@ class ZaptecChargerCard extends HTMLElement {
     await this._limitCurrent(this._chargeCurrent());
     await sleep(2000);
     await this._authorizeIfNeeded();
+    await this._resumeIfStopped();
   }
 
   async _scheduleStart() {

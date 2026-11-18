@@ -244,6 +244,7 @@
       'switch.ev_ev_charger_charging':                     CHARGER,
       'button.ev_ev_charger_authorize_charging':           CHARGER,
       'button.ev_ev_charger_deauthorize_charging':         CHARGER,
+      'button.ev_ev_charger_resume_charging':              CHARGER,
       'binary_sensor.ev_ev_charger_authorized_power':      CHARGER,
       'sensor.ev_ev_charger_session_total_charge':         CHARGER,
       'sensor.ev_ev_charger_charge_power':                 CHARGER,
@@ -321,6 +322,9 @@
       if (domain === 'input_number' && service === 'set_value' && helpers[target.entity_id]) {
         helpers[target.entity_id].state = String(data.value);
       }
+      if (domain === 'button' && service === 'press' && target.entity_id.endsWith('_resume_charging')) {
+        if ($('modeSelect').value === 'connected_finished' && availableCurrent > 0) $('modeSelect').value = 'connected_charging';
+      }
       if (domain === 'switch' && service === 'turn_off') {
         $('modeSelect').value = 'connected_finished';
       }
@@ -375,6 +379,7 @@
         'sensor.ev_ev_charger_charger_mode':            mkState(mode),
         'switch.ev_ev_charger_charging':                mkState(mode === 'connected_charging' ? 'on' : 'off'),
         'button.ev_ev_charger_authorize_charging':      mkState('unknown'),
+        'button.ev_ev_charger_resume_charging':         mkState('unknown'),
         'binary_sensor.ev_ev_charger_authorized_power': mkState($('authorizedInput').checked ? 'on' : 'off'),
         'sensor.stromligning_current_price_vat':        mkState($('priceInput').value, 'kr/kWh'),
         'sensor.ev_ev_charger_session_total_charge':    mkState($('energyInput').value, 'kWh'),

@@ -167,6 +167,7 @@ Zaptec install.
 | `entity_charger_mode`      | string | auto                                    | Override: charger mode sensor                                                                                     |
 | `entity_charging_switch`   | string | auto                                    | Override: charging switch (Stop charging)                                                                         |
 | `entity_authorize_button`  | string | auto                                    | Override: *Authorize charging* button                                                                             |
+| `entity_resume_button`     | string | auto                                    | Override: *Resume charging* button                                                                             |
 | `entity_authorized`        | string | auto                                    | Override: *Authorized* binary sensor                                                                              |
 | `entity_available_current` | string | auto                                    | Override: installation *Available current* (drives the slider position)                                           |
 | `entity_session_energy`    | string | auto                                    | Override: kWh charged this session                                                                                |
@@ -207,7 +208,7 @@ editor under *Entities* — useful if you have more than one charger (pick the c
 
 | Action                  | What the card does                                                                                                                        |
 | ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| Start now               | Turns off a pending schedule, `zaptec.limit_current` → the [charge current](#charge-current), waits 2 s, presses *Authorize charging* if the charger is waiting for authorization and isn't authorized yet |
+| Start now               | Turns off a pending schedule, `zaptec.limit_current` → the [charge current](#charge-current), waits 2 s, then presses *Authorize charging* if the charger is waiting for authorization, or *Resume charging* if charging was stopped |
 | Schedule start          | `zaptec.limit_current` → 0 A, waits 2 s, authorizes (same rule), then turns the schedule automation on                                  |
 | Cancel scheduled start  | Turns the schedule automation off                                                                                                         |
 | Stop charging           | `switch.turn_off` on the charging switch                                                                                                  |
@@ -226,7 +227,8 @@ schedule, the card creates:
   `zaptec_charger_card_schedule_<installation device id>`), triggered at the helper's time.
 
 Both show up in Settings like any other helper/automation. The automation's on/off state *is* the
-card's "schedule active" state. When it fires it sets the charge current (and authorizes if needed),
+card's "schedule active" state. When it fires it sets the charge current (and authorizes, or resumes a
+charger that was stopped, if needed),
 then switches itself off — so it runs once. Unplugging the car also switches it off.
 
 <a id="charge-current"></a>**Charge current.** Moving the amp slider applies the new limit right away
