@@ -93,6 +93,6 @@ Existing v1 setups keep working unchanged (see *Upgrading* below).
   start/schedule/cancel/stop actions, schedule time picker and toggle, optional car battery tiles with
   icon or image, light/dark theme, Danish and English.
 
-[2.0.0]: https://github.com/briis/zaptec_charger_card/compare/v1.0.1...HEAD
+[2.0.0]: https://github.com/briis/zaptec_charger_card/compare/v1.0.1...v2.0.0
 [1.0.1]: https://github.com/briis/zaptec_charger_card/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/briis/zaptec_charger_card/releases/tag/v1.0.0
