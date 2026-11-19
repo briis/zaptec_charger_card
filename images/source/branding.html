@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Inter', sans-serif; background: transparent; }
+  .canvas {
+    position: relative;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    color: #f3f4f6;
+    background:
+      radial-gradient(circle at 18% 50%, rgba(76,175,80,0.22), transparent 42%),
+      linear-gradient(135deg, #15181d 0%, #1d2229 60%, #171a1f 100%);
+  }
+  .banner { width: 1280px; height: 300px; padding: 0 80px; gap: 64px; border-radius: 28px; }
+  .social { width: 1280px; height: 640px; padding: 0 110px; gap: 90px; }
+  .charger { flex: none; filter: drop-shadow(0 0 28px rgba(76,175,80,0.45)); }
+  .banner .charger { width: 170px; }
+  .social .charger { width: 330px; }
+  .zc-body   { fill: #2b2f36; stroke: #3a414b; stroke-width: 1.5; }
+  .zc-stripe { fill: #3f4650; }
+  .zc-cable  { stroke: #3f4650; stroke-width: 7; stroke-linecap: round; fill: none; }
+  .zc-flow   { stroke: #4caf50; stroke-width: 3; stroke-dasharray: 8 7; fill: none; }
+  .zc-connector rect { fill: #1c1f24; stroke: #3a414b; stroke-width: 1.5; }
+  .zc-connector circle { fill: #6b7280; }
+  .led-outer { fill: none; stroke: #4caf50; stroke-width: 5; }
+  .led-glow  { fill: none; stroke: #4caf50; stroke-width: 14; opacity: 0.25; }
+  .led-inner { fill: #4caf50; }
+  .text { display: flex; flex-direction: column; }
+  .banner .br { display: none; }
+  .eyebrow { font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: #81c784; }
+  h1 { font-weight: 800; letter-spacing: -0.02em; line-height: 1.02; }
+  p  { color: #aeb4bd; font-weight: 400; line-height: 1.35; }
+  .banner .eyebrow { font-size: 18px; margin-bottom: 12px; }
+  .banner h1 { font-size: 58px; white-space: nowrap; }
+  .banner p  { font-size: 23px; margin-top: 14px; max-width: 820px; }
+  .social .eyebrow { font-size: 24px; margin-bottom: 18px; }
+  .social h1 { font-size: 84px; }
+  .social p  { font-size: 32px; margin-top: 26px; max-width: 640px; }
+  .states { display: flex; gap: 22px; margin-top: 30px; color: #c9ced6; }
+  .social .states { font-size: 22px; margin-top: 40px; }
+  .banner .states { font-size: 17px; margin-top: 22px; }
+  .dot { display: inline-block; width: 0.7em; height: 0.7em; border-radius: 50%; margin-right: 0.45em; vertical-align: 0.02em; }
+</style>
+</head>
+<body>
+<div class="canvas MODE" id="canvas">
+  <svg class="charger" viewBox="0 0 200 260" xmlns="http://www.w3.org/2000/svg">
+    <rect class="zc-body" x="40" y="10" width="120" height="170" rx="26"/>
+    <circle class="led-glow" cx="100" cy="62" r="22"/>
+    <circle class="led-outer" cx="100" cy="62" r="22"/>
+    <circle class="led-inner" cx="100" cy="62" r="9"/>
+    <rect class="zc-stripe" x="70" y="104" width="60" height="8" rx="4"/>
+    <path class="zc-cable" d="M100,180 C58,202 58,232 100,242 C142,252 152,220 122,214"/>
+    <path class="zc-flow" d="M100,180 C58,202 58,232 100,242 C142,252 152,220 122,214"/>
+    <g class="zc-connector">
+      <rect x="108" y="204" width="28" height="24" rx="6"/>
+      <circle cx="116" cy="212" r="2"/><circle cx="128" cy="212" r="2"/><circle cx="122" cy="220" r="2"/>
+    </g>
+  </svg>
+  <div class="text">
+    <div class="eyebrow">Home Assistant · Lovelace card</div>
+    <h1>Zaptec Go 2<span class="br"><br></span> Charger Card</h1>
+    <p>Start, schedule, throttle and monitor your EV charging — no helpers or scripts needed.</p>
+    <div class="states">
+      <span><i class="dot" style="background:#4caf50"></i>Charging</span>
+      <span><i class="dot" style="background:#ffb300"></i>Scheduled</span>
+      <span><i class="dot" style="background:#42a5f5"></i>Finished</span>
+      <span><i class="dot" style="background:#8a8f98"></i>Unplugged</span>
+    </div>
+  </div>
+</div>
+</body>
+</html>
